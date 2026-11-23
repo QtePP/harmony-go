@@ -17,6 +17,7 @@ import { shareMessageCard } from '../common/ShareCard'
 import { scaled } from '../common/Typography'
 import { common } from '@kit.AbilityKit'
 import { MdText, copyTextToClipboard } from './Markdown'
+import { MenuAction, PopoverMenu } from '../common/PopoverMenu'
 
 /** One text or code segment produced by the minimal Markdown splitter. */
 export interface Segment {
@@ -923,6 +924,11 @@ export struct MessageItem {
   @State revealed: boolean = false
   /** True while this reply is being read aloud, so the menu can offer "stop". */
   @State reading: boolean = false
+  /** Long-press menu: open flag, its rows, and where the finger landed. */
+  @State menuOpen: boolean = false
+  @State menuActions: MenuAction[] = []
+  @State menuX: number = 0
+  @State menuY: number = 0
   private reader: ReadAloud = new ReadAloud()
 
   /**
@@ -1874,47 +1880,62 @@ export struct MessageItem {
       this.copyMessage()
       return
     }
-    this.getUIContext().showActionSheet({
-      title: '这条消息',
-      message: this.message.role === Role.USER
-        ? '回撤会删除这条消息之后的所有内容，并还原该轮改动的文件。'
-        : '回撤会删除这条回复及其之后的所有内容，并还原该轮改动的文件。',
-      autoCancel: true,
-      confirm: {
-        value: '取消',
-        action: () => {}
-      },
-      sheets: [
-        {
-          title: '复制全文',
-          action: () => this.copyMessage()
-        },
-        {
-          title: '引用到输入框',
-          action: () => this.quoteMessage()
-        },
-        {
-          title: this.reading ? '停止朗读' : '朗读这条回复',
-          action: () => this.toggleReading()
-        },
-        {
-          title: '分享为图片',
-          action: () => this.onShareCard(this.message.id)
-        },
-        {
-          title: '从此处分支（保留原会话）',
-          action: () => this.onFork(this.message.id)
-        },
-        {
-          title: '重新回答（新会话）',
-          action: () => this.onRegenerate(this.message.id)
-        },
-        {
-          title: '回撤到这条消息之前',
-          action: () => this.confirmRollback()
-        }
-      ]
+    this.menuActions = this.buildMenu()
+    this.menuOpen = true
+  }
+
+  /**
+   * Rows of the long-press menu. Same shape as the session rail's menu: plain
+   * rows, one accent action, then the destructive one behind a divider with
+   * the consequence spelled out — rollback deletes messages and restores files,
+   * and a menu that only says 「回撤」 hides both halves of that.
+   */
+  private buildMenu(): MenuAction[] {
+    const rollbackNote = this.message.role === Role.USER
+      ? '删除这条消息之后的所有内容，并还原该轮改动的文件。'
+      : '删除这条回复及其之后的所有内容，并还原该轮改动的文件。'
+    const rows: MenuAction[] = [
+      { id: 'copy', label: '复制全文', accent: true },
+      { id: 'quote', label: '引用到输入框' },
+      { id: 'read', label: this.reading ? '停止朗读' : '朗读这条回复' },
+      { id: 'share', label: '分享为图片' },
+      { id: 'fork', label: '从此处分支（保留原会话）' },
+      { id: 'regen', label: '重新回答（新会话）' },
+      { id: 'rollback', label: '回撤到这条消息之前', danger: true, note: rollbackNote }
+    ]
+    return rows
+  }
+
+  /**
+   * Popup content, as a @Builder method: the `bindPopup` lambda must not
+   * instantiate a struct directly (see PopoverMenu's header comment).
+   */
+  @Builder
+  menuPanel() {
+    PopoverMenu({
+      actions: this.menuActions,
+      accent: this.accent,
+      onPick: (id: string) => this.runMenuAction(id)
     })
+  }
+
+  private runMenuAction(id: string): void {
+    this.menuOpen = false
+    if (id === 'copy') {
+      this.copyMessage()
+    } else if (id === 'quote') {
+      this.quoteMessage()
+    } else if (id === 'read') {
+      this.toggleReading()
+    } else if (id === 'share') {
+      this.onShareCard(this.message.id)
+    } else if (id === 'fork') {
+      this.onFork(this.message.id)
+    } else if (id === 'regen') {
+      this.onRegenerate(this.message.id)
+    } else if (id === 'rollback') {
+      this.confirmRollback()
+    }
   }
 
   /** Second confirmation: the file restore cannot be undone. */
@@ -2018,7 +2039,36 @@ export struct MessageItem {
           .backgroundColor(this.hasBubble() ? $r('app.color.bubble_user') : Color.Transparent)
           .borderRadius(this.hasBubble() ? 16 : 0)
           .constraintSize({ maxWidth: '92%' })
+          .onTouch((event: TouchEvent) => {
+            // The popup anchors at the finger, like the session rail's: a menu
+            // that appears next to the bubble you pressed reads as attached to
+            // it, one that rises from the bottom of the screen does not.
+            if (event.type === TouchType.Down && event.touches.length > 0) {
+              this.menuX = event.touches[0].x
+              this.menuY = event.touches[0].y
+            }
+          })
           .gesture(LongPressGesture().onAction(() => this.openActions()))
+
+          Column()
+            .width(1)
+            .height(1)
+            .position({ x: this.menuX, y: this.menuY })
+            .hitTestBehavior(HitTestMode.None)
+            .bindPopup(this.menuOpen, {
+              builder: (): void => {
+                this.menuPanel()
+              },
+              placement: Placement.Bottom,
+              popupColor: $r('app.color.surface'),
+              enableArrow: true,
+              autoCancel: true,
+              onStateChange: (state: PopupStateChangeParam) => {
+                if (!state.isVisible) {
+                  this.menuOpen = false
+                }
+              }
+            })
         }
 
         if (hasSecret(this.message.text)) {

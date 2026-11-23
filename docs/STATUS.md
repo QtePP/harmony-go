@@ -69,6 +69,23 @@
   `manager.getPairedDevices()` 的地址）再验字节通道。为此新增的测试用例默认无 `role` 参数时直接通过，
   不拖累 `bash scripts/test.sh device`。
 
+- **长按菜单三处统一成同一个浮层（2026-11-23 17:00–17:20，平板 MLR-AL00 + 手机 CMM-AL10）**。
+  用户反馈：产物/文件长按、消息长按弹出来的 UI 很丑，不如会话长按那个。
+  **原本是两套东西**：会话用的是自定义 `bindPopup`（`@Builder` 画的行 + 分隔线 + 危险区，锚在被按的那一行）；
+  消息与文件用的是系统 `UIContext.showActionSheet`——它自带标题/说明/取消行、样式由系统定、而且**永远从底部升起**，
+  所以跟会话菜单完全不是一个产品。**这套「锚在被按元素上的自定义浮层」在 iOS 里叫 `UIContextMenu`（长按上下文菜单），
+  在鸿蒙 API 里就是 `bindPopup` + 自定义 `@Builder`**；ActionSheet 是「操作表」，不是同一个东西。
+  修法：抽出 `common/PopoverMenu.ets`（`MenuAction{id,label,accent?,danger?,note?}` + 一个面板组件），
+  消息气泡、文件行、目录行全部改成 `bindPopup`；危险项放在分隔线之后、红色、并带一行后果说明
+  （回撤会删消息 + 还原文件，一个「回撤」二字说不清）。
+  **两次真机崩溃（记下来，别再踩）**：把 `@Component` 或**全局 `@Builder` 直接写在 `bindPopup` 的 lambda 里**，
+  运行时直接被杀 —— 先是 `class constructor cannot called without 'new'`，改成全局 builder 后变成
+  `Cannot read property observeComponentCreation2 of undefined`，两次堆栈都指到 `ChatView.ets:2047`（那行就是调用）。
+  **正确形态**：lambda 里只调一个 **`@Builder` 方法**，组件在该方法里实例化（= `bindSheet` 那边一直在用的写法）。
+  真机验证：手机消息菜单（7 项，红色「回撤到这条消息之前」+ 后果说明）、手机文件行菜单
+  （分享到其他应用 / 打开 / 复制文件路径 / 删除）、平板消息菜单；带指示箭头的浮层贴在**被按的那个元素**上，
+  不再从底部升起。
+
 - **输入框长文本被按钮遮挡：控件从输入框里挪进顶栏（2026-11-23 16:40–17:00，平板 MLR-AL00 + 手机 CMM-AL10）**。
   现象（用户报）：输入框文字一多，正文就被「模型 / 推理强度 / 语音 / 图片」这排按钮压住。
   根因：这排按钮是**叠在输入框右边缘**上的，靠给 `TextArea` 一个右侧内边距让位；而那个内边距写死成

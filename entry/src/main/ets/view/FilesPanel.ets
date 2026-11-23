@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit'
 import { fileIo as fs } from '@kit.CoreFileKit'
 import { pasteboard } from '@kit.BasicServicesKit'
 import { shareFile } from '../common/FileShare'
+import { MenuAction, PopoverMenu } from '../common/PopoverMenu'
 
 /** One visible row of the flattened workspace tree. */
 interface FileRow {
@@ -88,6 +89,11 @@ export struct FilesPanel {
   @Prop @Watch('onTick') refreshTick: number = 0
   @State rows: FileRow[] = []
   @State missing: boolean = false
+  /** Long-press menu: which row it is for, its rows, and where the finger was. */
+  @State menuPath: string = ''
+  @State menuActions: MenuAction[] = []
+  @State menuX: number = 0
+  @State menuY: number = 0
   onOpenFile: (path: string, name: string) => void = () => {}
   private expanded: Set<string> = new Set()
 
@@ -150,59 +156,71 @@ export struct FilesPanel {
    * two things that otherwise need a desktop.
    */
   private openRowActions(row: FileRow): void {
-    if (row.isDir) {
-      this.getUIContext().showActionSheet({
-        title: row.name,
-        message: '文件夹',
-        autoCancel: true,
-        confirm: {
-          value: '取消',
-          action: () => {}
-        },
-        sheets: [
-          {
-            title: row.expanded ? '收起' : '展开',
-            action: () => this.toggle(row)
-          },
-          {
-            title: '复制目录路径',
-            action: () => this.copyPath(row.path)
-          }
-        ]
-      })
+    this.menuPath = row.path
+    this.menuActions = row.isDir ? this.dirMenu(row) : this.fileMenu(row)
+  }
+
+  /** Folder rows: expand/collapse is still the tap, the menu is for the rest. */
+  private dirMenu(row: FileRow): MenuAction[] {
+    const rows: MenuAction[] = [
+      { id: 'toggle', label: row.expanded ? '收起' : '展开', accent: true },
+      { id: 'copy-dir', label: '复制目录路径' }
+    ]
+    return rows
+  }
+
+  /** File rows: share first — grabbing a produced file is why this menu exists. */
+  private fileMenu(row: FileRow): MenuAction[] {
+    const rows: MenuAction[] = [
+      { id: 'share', label: '分享到其他应用', accent: true },
+      { id: 'open', label: '打开' },
+      { id: 'copy-file', label: '复制文件路径' },
+      {
+        id: 'delete',
+        label: '删除',
+        danger: true,
+        note: '删除后无法从应用内恢复。'
+      }
+    ]
+    return rows
+  }
+
+  /** Popup content; see the note in PopoverMenu about not instantiating there. */
+  @Builder
+  menuPanel() {
+    PopoverMenu({
+      actions: this.menuActions,
+      accent: this.accent,
+      onPick: (id: string) => this.runRowAction(id)
+    })
+  }
+
+  private runRowAction(id: string): void {
+    const row = this.rowOf(this.menuPath)
+    this.menuPath = ''
+    if (row === undefined) {
       return
     }
-    this.getUIContext().showActionSheet({
-      title: row.name,
-      // The sheet requires a message; the size is the only thing worth saying
-      // about a file before the actions, and '' is honest when it is unknown.
-      message: row.sizeLabel.length > 0 ? row.sizeLabel : '文件',
-      autoCancel: true,
-      confirm: {
-        value: '取消',
-        action: () => {}
-      },
-      sheets: [
-        {
-          title: '分享到其他应用',
-          action: () => {
-            void this.share(row)
-          }
-        },
-        {
-          title: '打开',
-          action: () => this.onOpenFile(row.path, row.name)
-        },
-        {
-          title: '复制文件路径',
-          action: () => this.copyPath(row.path)
-        },
-        {
-          title: '删除',
-          action: () => this.confirmDelete(row)
-        }
-      ]
-    })
+    if (id === 'toggle') {
+      this.toggle(row)
+    } else if (id === 'copy-dir' || id === 'copy-file') {
+      this.copyPath(row.path)
+    } else if (id === 'share') {
+      void this.share(row)
+    } else if (id === 'open') {
+      this.onOpenFile(row.path, row.name)
+    } else if (id === 'delete') {
+      this.confirmDelete(row)
+    }
+  }
+
+  private rowOf(path: string): FileRow | undefined {
+    for (const row of this.rows) {
+      if (row.path === path) {
+        return row
+      }
+    }
+    return undefined
   }
 
   private async share(row: FileRow): Promise<void> {
@@ -312,7 +330,10 @@ export struct FilesPanel {
         List() {
           ForEach(this.rows, (row: FileRow) => {
             ListItem() {
-              Row({ space: 6 }) {
+              // ListItem takes exactly one child, so the row and the popup
+              // anchor share this wrapper.
+              Column() {
+                Row({ space: 6 }) {
                 if (row.isDir) {
                   SymbolGlyph($r('sys.symbol.chevron_down'))
                     .fontSize(11)
@@ -343,6 +364,13 @@ export struct FilesPanel {
               .width('100%')
               .padding({ left: 14 + row.depth * 14, right: 14, top: 9, bottom: 9 })
               .borderRadius(10)
+              .onTouch((event: TouchEvent) => {
+                // Anchor the menu at the finger, like every other long press.
+                if (event.type === TouchType.Down && event.touches.length > 0) {
+                  this.menuX = event.touches[0].x
+                  this.menuY = event.touches[0].y
+                }
+              })
               .onClick(() => {
                 if (row.isDir) {
                   this.toggle(row)
@@ -351,6 +379,28 @@ export struct FilesPanel {
                 }
               })
               .gesture(LongPressGesture().onAction(() => this.openRowActions(row)))
+
+              Column()
+                .width(1)
+                .height(1)
+                .position({ x: this.menuX, y: this.menuY })
+                .hitTestBehavior(HitTestMode.None)
+                .bindPopup(this.menuPath === row.path && this.menuActions.length > 0, {
+                  builder: (): void => {
+                    this.menuPanel()
+                  },
+                  placement: Placement.Bottom,
+                  popupColor: $r('app.color.surface'),
+                  enableArrow: true,
+                  autoCancel: true,
+                  onStateChange: (state: PopupStateChangeParam) => {
+                    if (!state.isVisible) {
+                      this.menuPath = ''
+                    }
+                  }
+                })
+              }
+              .width('100%')
             }
           }, (row: FileRow) => `${row.path}.${row.expanded}`)
         }
