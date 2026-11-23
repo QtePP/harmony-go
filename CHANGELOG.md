@@ -18,6 +18,14 @@
 
 ### 新增
 
+- **项目主题预设 / 数据驱动图表 / 亮暗双导出（2026-11-23 真机）**。`html` 工具新增 `preset` 动作
+  （`.dsh-html/presets.json` 存默认主题与命名预设，`create` 自动继承，`check` 报主题漂移）与 `chart` 动作
+  （CSV/TSV/JSON → 柱/横条/堆叠/折线/热力/环形，坐标与百分比由工具计算）。预览页导出菜单新增
+  「导出长图（亮 + 暗）」：强制 `data-theme` 各截一张整页长图，用于检查两套主题是否都成立。真机验收：
+  preset-page.html 继承 `--accent:#0f766e`，折线坐标验算正确；亮/暗长图各一张、同尺寸 1323×2451、
+  底色分别 `#f7f7f5` 与 `#14140f`。插件单测 41 条并入 `bash scripts/test.sh unit`。
+
+
 - **`html` 组件库令牌化 + 9 个展示组件（2026-11-23 真机）**。组件不再把颜色/间距/字号/宽度写死：改成
   CSS 令牌（`--accent`、`--c1…--c5`、`--gap*`、`--radius*`、`--page-max`、`--fs-*` 等）+ 修饰符
   （`card.flat/tinted/accent`、`stat.hero`、`steps.compact`、`wrap.wide`、`body.density-*`…），

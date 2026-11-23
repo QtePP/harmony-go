@@ -196,3 +196,71 @@ export async function exportPageAsPdf(
     pixelMap.release()
   }
 }
+
+/** Wait for the page to repaint after a theme switch. */
+function settle(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(() => resolve(), 260)
+  })
+}
+
+async function paintTheme(controller: webview.WebviewController, theme: string): Promise<void> {
+  try {
+    await controller.runJavaScript(`document.documentElement.setAttribute('data-theme', '${theme}')`)
+  } catch (error) {
+    // A page without the attribute still renders; the snapshot just matches
+    // whatever the WebView currently believes the theme is.
+  }
+  await settle()
+}
+
+async function clearTheme(controller: webview.WebviewController): Promise<void> {
+  try {
+    await controller.runJavaScript("document.documentElement.removeAttribute('data-theme')")
+  } catch (error) {
+    // Best effort: the viewer reloads the page anyway when it closes.
+  }
+}
+
+/**
+ * Export the same page twice, once forced light and once forced dark.
+ *
+ * The kit pages render both themes, but "it looks right in dark mode" is the
+ * kind of claim that is cheaper to check by looking than by trusting: two
+ * long images side by side show a page whose dark tokens were never filled in,
+ * or a diagram whose colours only work on white.
+ */
+export async function exportPageAsPngPair(
+  context: common.UIAbilityContext,
+  controller: webview.WebviewController,
+  fileName: string
+): Promise<ExportOutcome> {
+  const base = baseNameOf(fileName)
+  const written: string[] = []
+  for (const theme of ['light', 'dark']) {
+    await paintTheme(controller, theme)
+    const pixelMap = await snapshotPage(controller)
+    if (pixelMap === null) {
+      await clearTheme(controller)
+      return { ok: false, path: '', message: '导出失败：页面还没画完，稍后再试' }
+    }
+    try {
+      const packer = image.createImagePacker()
+      const bytes = await packer.packing(pixelMap, { format: 'image/png', quality: 100 })
+      const path = `${exportDir(context)}/${base}-长图-${theme === 'dark' ? '暗' : '亮'}.png`
+      writeBytes(path, bytes)
+      written.push(path.substring(path.lastIndexOf('/') + 1))
+    } catch (error) {
+      await clearTheme(controller)
+      return { ok: false, path: '', message: `导出失败：${(error as Error).message}` }
+    } finally {
+      pixelMap.release()
+    }
+  }
+  await clearTheme(controller)
+  return {
+    ok: true,
+    path: `${exportDir(context)}/${base}-长图-暗.png`,
+    message: `亮/暗两张长图已生成：${written.join('、')}`
+  }
+}

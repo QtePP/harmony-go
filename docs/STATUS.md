@@ -250,6 +250,27 @@
   PDF **MediaBox 992.25×12000pt / 968KB**，两份文件都从设备取回校验（PDF 用 `qlmanage` 渲染缩略图
   确认整页内容在），每次导出后系统分享面板正常弹出（「分享 1 项」）。
 
+- **项目主题预设 + 数据驱动图表 + 亮/暗双导出（2026-11-23 19:37，手机 CMM-AL10）**。
+  ① **项目主题预设**：`.dsh-html/presets.json`（`html` 工具新动作 `preset`：`save` / `default` / `remove` / 列表）。
+  `create` 的解析顺序是「显式参数 > 命名预设 > 项目默认」；`check` 会拿页面 `<html style>` 里声明的令牌
+  与项目默认比对，不一致就报「主题漂移」。真机验证：模型先 `preset save name=brand default=true
+  tokens {--accent:#0f766e,--c2:#b45309}`，再不带任何主题参数 `create preset-page.html` —— 产物
+  `<html ... style="--accent:#0f766e;--c2:#b45309">` 直接继承了项目默认，`presets.json` 里 brand 与 default
+  都在。
+  ② **图表数据驱动**：新动作 `chart`，吃 CSV/TSV 或 JSON（数组对象 / `{labels,series}`，也可 `dataFile`），
+  工具自己算百分比、坐标与 viewBox（kind = bars / hbars / stack / line / heat / donut）。真机：模型给
+  `周,完成 / W1,18 / W2,21 / W3,16 / W4,24` 生成折线，SVG 里 `M24,55.5 …`（18/24 → y=55.5，验算正确），
+  `viewBox="0 0 320 180"`，check 0 warn 0 error。
+  ③ **亮/暗双导出**：预览页「导出」菜单新增「导出长图（亮 + 暗）」——对同一页强制 `data-theme` 为
+  light/dark 各截一张整页长图（`webPageSnapshot`），只截一次页面状态、不自动分享（分享面板一次只收一个
+  文件，文件面板可分别发）。真机验证（preset-page.html）：生成 `preset-page-长图-亮.png`（106,746B）与
+  `preset-page-长图-暗.png`（105,545B），**两张同尺寸 1323×2451**，像素采样 亮底 `#f7f7f5` / 暗底
+  `#14140f`，暗色长图里折线与强调色仍是项目预设的青色 —— 说明主题确实被强制切换而不是同一张图截两次。
+  **已知边界**：旧版组件库生成的页面没有 `html[data-theme="dark"]` 规则，强制切换对它们无效（两张会一样）；
+  从本版起生成的页面都成立。
+  验证：插件单测 **41 条**全绿（预设解析/继承/覆盖、漂移检测、CSV/JSON 解析、六种图表的百分比/坐标/
+  热力档位/环形占比、坏数据被拒）；`arkts` + `local` 全绿；两台设备已装本版。
+
 - **组件库改成「令牌驱动 + 修饰符」，并补 9 个展示组件（2026-11-23 19:10，手机 CMM-AL10）**。
   背景：原组件库把颜色/间距/字号/宽度写死在组件里，虽然能拼页面，但换观感就要重写 CSS —— 等于用框架
   限制了可视化表达。改法：
@@ -305,6 +326,16 @@
 > 权威副本始终是本文件。
 
 ---
+
+- **上下文账本与原生面板真机闭环（2026-11-23 19:25，手机 CMM-AL10）**。输入框小环从「弹 toast」改为打开原生面板：
+  窗口占用（83.6k/1.0M，8%）、系统/工具/消息组成（622 / 6.2k / 55.9k）、前缀缓存命中（95%，1.5M 走缓存）、
+  最近 3 轮（第 4/5/6 轮，含 8/1/11 步与每轮输入输出）。数据来自新插件
+  `@ohos/dsh-context-ledger` 写的 `<filesDir>/dsh-home/context-ledger.jsonl`（真机 20 行，`tail` 可见
+  `turn:6 step:11` 的原始记录）。force-stop 冷启后重开面板数字不变；返回键先关面板、不退应用。
+  **过程里撞到一次与本题无关的冷启布局异常**：产物 6 个时 ArtifactDock 的渐隐层 `height('100%')`
+  把 dock 撑满、输入行被挤出屏幕；同轮 ChatView 的 strip 改动已修掉，复测冷启列表/输入行正常。
+  单测：插件 6/6；LocalUnit 新增 ContextLedger 10/10；`bash scripts/test.sh unit local` 全绿；`devecocli build` 成功。
+
 
 - **`push` 已用真 token 验成；顺手修了两个真 bug（2026-11-23，手机 CMM-AL10 / HarmonyGo）**。
   用户在设置页填入真实细粒度 PAT（`QtePP`，对 `QtePP/harmony-go` 有 `admin/push`）。设备侧
