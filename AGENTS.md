@@ -203,6 +203,7 @@ ACP 实测契约（勿凭直觉改）：
 | 沙箱与审批 | 四层沙箱 + 权限三档（只读 / 平衡 / 宽松），三档均真机闭环 |
 | 联网与仓库 | `web_search` 走服务端 Messages 搜索；`git` 纯 JS clone/snapshot/pull/log/diff/status/**commit**/**push**（父链自解析、`force` 重置、传输中途限流、跟随设备系统代理），真机端到端走过超时重试；`push` 的 token 在设置页填，写 `dsh-home/.git-token`（**不进 env**；0600 收紧未证实，见 STATUS） |
 | 稳定性 | 断线重连 120s 退避实测夺回客户端槽位；崩溃即终态（`node::Start` 每进程一次） |
+| 品牌 | 闪电标记的横杠是**平行四边形**（斜边与闪电肩线同角，`logo.svg` / `bolt.svg`）；四张位图图标由 `scripts/make-mark-icons.py` 从同一份几何生成，改标记必须重跑（2026-11-23 前它们一直是旧胶囊版，见 STATUS） |
 
 ### 7.2 没成 / 卡在平台上的
 
