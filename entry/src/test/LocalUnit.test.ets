@@ -11,6 +11,7 @@ import { compactCount, dayKey, mergeUsage, usageTotal, UsageDay } from '../main/
 import { spokenForm } from '../main/ets/common/ReadAloud';
 import { extOf, fallbackUtd, nameOf } from '../main/ets/common/FileShare';
 import { modelsFromBody, ModelEntry, normalizeModelId } from '../main/ets/common/ModelCatalog';
+import { FrameReader } from '../main/ets/common/ProjectSync';
 import { flattenChoices, AcpModelChoice, AcpConfigGroup } from '../main/ets/model/AcpProtocol';
 
 /**
@@ -21,6 +22,32 @@ import { flattenChoices, AcpModelChoice, AcpConfigGroup } from '../main/ets/mode
  * None of them needs a device, so they belong in the host-side suite that runs
  * before every deploy.
  */
+/**
+ * Build a wire frame the way ProjectSync does, without a TextEncoder: the test
+ * headers are ASCII, so char codes are enough and the host suite stays
+ * dependency-free.
+ */
+function syncFrame(header: string, data: number[]): number[] {
+  const out: number[] = []
+  const pushU32 = (value: number): void => {
+    out.push((value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff)
+  }
+  pushU32(header.length)
+  for (let i = 0; i < header.length; i++) {
+    out.push(header.charCodeAt(i))
+  }
+  pushU32(data.length)
+  for (const byte of data) {
+    out.push(byte)
+  }
+  return out
+}
+
+function feedFrame(reader: FrameReader, bytes: number[]): void {
+  const buffer = new Uint8Array(bytes)
+  reader.push(buffer.buffer as ArrayBuffer)
+}
+
 export default function localUnitTest() {
   describe('SecretMask', () => {
     it('masks an API key to its first eight characters', 0, () => {
@@ -400,6 +427,41 @@ export default function localUnitTest() {
       expect(goalFromJson(created, 'get_goal', '{}') === null).assertTrue();
     });
   });
+  describe('syncFraming', () => {
+    // Frames are [u32 headerLen][header JSON][u32 dataLen][data]; the peer may
+    // split one frame across reads or pack several into one, so the reader must
+    // reconstruct from bytes, not from packet boundaries.
+    it('reassembles a frame split across two reads', 0, () => {
+      const reader = new FrameReader()
+      const bytes = syncFrame('{"t":"hello"}', [1, 2, 3])
+      feedFrame(reader, bytes.slice(0, 5))
+      expect(reader.hasFrame()).assertFalse()
+      feedFrame(reader, bytes.slice(5))
+      expect(reader.hasFrame()).assertTrue()
+      const box = reader.next()
+      if (box !== null) {
+        expect(box.header.t).assertEqual('hello')
+        expect(box.data === null ? -1 : box.data.byteLength).assertEqual(3)
+      }
+    })
+
+    it('reads two frames that arrive in one read', 0, () => {
+      const reader = new FrameReader()
+      feedFrame(reader, syncFrame('{"t":"accept"}', []).concat(syncFrame('{"t":"done"}', [])))
+      const first = reader.next()
+      const second = reader.next()
+      expect(first === null ? '' : first.header.t).assertEqual('accept')
+      expect(second === null ? '' : second.header.t).assertEqual('done')
+      expect(reader.next() === null).assertTrue()
+    })
+
+    it('drops the buffer when a header length is nonsense', 0, () => {
+      const reader = new FrameReader()
+      feedFrame(reader, [0xff, 0xff, 0xff, 0xff])
+      expect(reader.hasFrame()).assertFalse()
+    })
+  })
+
   describe('modelCatalog', () => {
     it('decodes the OpenAI-shaped listing with names and descriptions', 0, () => {
       const body = '{"data":[{"id":"deepseek-flash","name":"DeepSeek-V4.1-Flash","description":"fast"},' +

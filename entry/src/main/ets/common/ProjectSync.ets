@@ -1,7 +1,6 @@
 import { common } from '@kit.AbilityKit'
 import { socket } from '@kit.NetworkKit'
 import { fileIo as fs } from '@kit.CoreFileKit'
-import { util } from '@kit.ArkTS'
 
 /**
  * Project sync: move a project's files from one device to another.
@@ -93,6 +92,81 @@ interface SyncFrameBox {
   data: ArrayBuffer | null
 }
 
+/**
+ * UTF-8 encode/decode without `util`.
+ *
+ * The framing must stay runnable in the host test suite, where the kit modules
+ * are stubs; a text codec that exists only on device would make every frame
+ * look corrupt in a test. Headers and file paths are the only strings here, and
+ * both can contain non-ASCII (Chinese file names), so this is a real codec, not
+ * an ASCII shortcut.
+ */
+function encodeUtf8(text: string): Uint8Array {
+  const out: number[] = []
+  for (let i = 0; i < text.length; i++) {
+    let code = text.charCodeAt(i)
+    if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1)
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00)
+        i++
+      }
+    }
+    if (code < 0x80) {
+      out.push(code)
+    } else if (code < 0x800) {
+      out.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f))
+    } else if (code < 0x10000) {
+      out.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f))
+    } else {
+      out.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f),
+        0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f))
+    }
+  }
+  return new Uint8Array(out)
+}
+
+/** Decode UTF-8, replacing malformed sequences instead of throwing. */
+function decodeUtf8(bytes: Uint8Array): string {
+  let out = ''
+  let i = 0
+  while (i < bytes.length) {
+    const byte = bytes[i]
+    let code = 0
+    let extra = 0
+    if (byte < 0x80) {
+      code = byte
+    } else if ((byte & 0xe0) === 0xc0) {
+      code = byte & 0x1f
+      extra = 1
+    } else if ((byte & 0xf0) === 0xe0) {
+      code = byte & 0x0f
+      extra = 2
+    } else if ((byte & 0xf8) === 0xf0) {
+      code = byte & 0x07
+      extra = 3
+    } else {
+      i++
+      continue
+    }
+    i++
+    for (let k = 0; k < extra; k++) {
+      if (i >= bytes.length) {
+        break
+      }
+      code = (code << 6) | (bytes[i] & 0x3f)
+      i++
+    }
+    if (code > 0xffff) {
+      const shifted = code - 0x10000
+      out += String.fromCharCode(0xd800 + (shifted >> 10), 0xdc00 + (shifted & 0x3ff))
+    } else {
+      out += String.fromCharCode(code)
+    }
+  }
+  return out
+}
+
 /** Encode a u32 big-endian into four bytes. */
 function u32(value: number): Uint8Array {
   const out = new Uint8Array(4)
@@ -110,7 +184,7 @@ function readU32(bytes: Uint8Array, offset: number): number {
 
 /** One frame ready to put on the wire: header JSON plus optional payload. */
 function frame(header: SyncFrame, data?: ArrayBuffer): ArrayBuffer {
-  const json = util.TextEncoder.create('utf-8').encodeInto(JSON.stringify(header))
+  const json = encodeUtf8(JSON.stringify(header))
   const dataLen = data === undefined ? 0 : data.byteLength
   const out = new Uint8Array(4 + json.length + 4 + dataLen)
   out.set(u32(json.length), 0)
@@ -129,7 +203,7 @@ function frame(header: SyncFrame, data?: ArrayBuffer): ArrayBuffer {
  * several frames can arrive together. Everything accumulates here until a whole
  * frame is present.
  */
-class FrameReader {
+export class FrameReader {
   private buffer: Uint8Array = new Uint8Array(0)
   /** Decoded headers, in arrival order; `data` holds the payload or null. */
   private headers: SyncFrame[] = []
@@ -170,8 +244,7 @@ class FrameReader {
       if (this.buffer.length < 4 + headerLen + 4) {
         return
       }
-      const headerText = util.TextDecoder.create('utf-8')
-        .decodeToString(this.buffer.subarray(4, 4 + headerLen))
+      const headerText = decodeUtf8(this.buffer.subarray(4, 4 + headerLen))
       const dataLen = readU32(this.buffer, 4 + headerLen)
       const total = 4 + headerLen + 4 + dataLen
       if (this.buffer.length < total) {
@@ -357,7 +430,7 @@ export async function sendProject(
     // the receiver can import them with the same code path that reads its own
     // store, instead of unpacking a pseudo-file.
     if (sessionsJson.length > 0) {
-      const encoded = util.TextEncoder.create('utf-8').encodeInto(sessionsJson)
+      const encoded = encodeUtf8(sessionsJson)
       await tcp.send({ data: frame({ t: T_SESSIONS }, encoded.buffer as ArrayBuffer) })
     }
 
@@ -661,8 +734,7 @@ export class SyncReceiver {
           }
           if (header.t === T_SESSIONS) {
             if (data !== null) {
-              sessionsJson = util.TextDecoder.create('utf-8')
-                .decodeToString(new Uint8Array(data))
+              sessionsJson = decodeUtf8(new Uint8Array(data))
             }
             continue
           }
