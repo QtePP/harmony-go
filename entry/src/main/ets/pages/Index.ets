@@ -166,6 +166,8 @@ struct Index {
   @State effortChoices: AcpModelChoice[] = []
   @State currentEffortValue: string = ''
   @State effortLabel: string = ''
+  /** The `models:` line from the latest boot report, if one exists. */
+  @State modelDiagnostic: string = ''
   @State showEffortSheet: boolean = false
   @State approvalVisible: boolean = false
   /** First-launch mode question: shown once, before the runtime boots. */
@@ -2513,6 +2515,18 @@ struct Index {
     // answer it here instead of leaving it to be discovered by a timeout.
     lines.push(`git network: ${this.proxyLine}`)
     lines.push(`crash: ${this.host.crashInfo()}`)
+    const report = this.host.bridgeReport(this.context)
+    // Keep the model probe line for the picker too: the list can only show
+    // providers that answered, so the reason a provider is missing has to come
+    // from here.
+    for (const line of report.split('\n')) {
+      if (line.indexOf('models:') >= 0) {
+        this.modelDiagnostic = line.trim()
+        break
+      }
+    }
+    lines.push('--- boot report ---')
+    lines.push(report)
     lines.push('--- bridge ---')
     lines.push(this.host.bridgeStatus(this.context))
     lines.push('--- node log ---')
@@ -2593,6 +2607,7 @@ struct Index {
       usageSummary: this.usageSummary,
       initialKey: AppConfig.apiKey,
       initialGitToken: AppConfig.gitToken,
+      modelDiagnostic: this.modelDiagnostic,
       initialModel: AppConfig.model,
       initialProfile: AppConfig.profile,
       initialPermission: AppConfig.permissionMode,

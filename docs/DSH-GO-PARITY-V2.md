@@ -76,8 +76,11 @@ dsh-go 已经从「一个安卓聊天客户端」长成了「**本机引擎 + �
   `session/set_config_option`；模型不支持时后端不推该选项 ⇒ 按钮消失。②failures —— **客户端拿不到**
   是上游行为（`dsh-acp` 的 catch 丢弃错误对象，随后 `filter(options.length > 0)` 把空组整组删除），
   所以改在运行时侧补：`@ohos/dsh-boot-report` 的 `describeProviders()` 在过滤前逐个探测，写进
-  `bridge.log`（`id=计数` / `id=failed(原因)`）。本地实测直接给出 `deepseek-official=0,
-  deepseek-account=0`。**注意口径**：这条信息在**日志**里，不在 UI 里——UI 拿到的是过滤后的列表。
+  `bridge.log`（`id=计数` / `id=failed(原因)`）。**这条已经接进 UI**（2026-11-23）：
+  `NodeHost.bridgeReport()` 读 `bridge.log` 的 `[boot-report]` 段 → 诊断页 `--- boot report ---`
+  一段 + 设置页模型列表下方一行小字。真机读到 `deepseek-official=2, deepseek-account=0`
+  ——官方 provider 有 2 个模型、账号 provider 为 0，这就是列表里缺 provider 的原因。
+  **坑**：`bridge.log` 跨启动累积，按「最后 N 行」截会并排显示两轮；按 `tools(` 切块只取最后一块。
 
 | 模型/provider 切换 | 有（多 provider、自定义） | 有（会话内模型选择器，`configOptions` 驱动） | — | 已对齐（自定义 provider 需 B：走 settings 写入 dsh 配置） |
 

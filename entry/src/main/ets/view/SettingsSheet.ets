@@ -30,6 +30,15 @@ export struct SettingsSheet {
   @State showLocked: boolean = false
   @Prop initialKey: string = ''
   @Prop initialGitToken: string = ''
+  /**
+   * `[boot-report] models:` line, quoted verbatim under the model list.
+   *
+   * The picker can only show providers that answered; a provider that failed
+   * is filtered out of the options entirely (dsh-acp drops the error, then
+   * removes empty groups), so without this line the honest message is "no
+   * models" with no reason attached.
+   */
+  @Prop modelDiagnostic: string = ''
   @Prop initialModel: string = ''
   @Prop initialProfile: string = 'sdk'
   @Prop initialPermission: string = 'workspace-write'
@@ -255,6 +264,12 @@ export struct SettingsSheet {
             Text(this.modelNote)
               .fontSize(11)
               .fontColor($r('app.color.text_tertiary'))
+            if (this.modelDiagnostic.length > 0) {
+              Text(this.modelDiagnostic)
+                .fontSize(10)
+                .fontColor($r('app.color.text_tertiary'))
+                .fontFamily('monospace')
+            }
           }
 
           Text(`当前：${this.model}`)

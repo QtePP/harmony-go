@@ -251,6 +251,55 @@ export class NodeHost {
     }
   }
 
+  /**
+   * The `[boot-report]` lines from bridge.log.
+   *
+   * The model catalog probe lives there, not in node.log: it is written by the
+   * boot-report plugin after the bridge is up. Diagnostics is the only place a
+   * user can see it without a shell — and the alternative is worse than it
+   * sounds, because dsh-acp drops a provider's error and filters the empty
+   * group out, so the UI list cannot say "this provider has no models and
+   * here is why".
+   */
+  bridgeReport(context: common.UIAbilityContext): string {
+    try {
+      const path = `${context.filesDir}/dsh-home/bridge.log`
+      if (!fs.accessSync(path)) {
+        return '尚无启动自检记录（bridge.log 不存在，可能还没启动完成）'
+      }
+      const text = fs.readTextSync(path)
+      const out: string[] = []
+      // bridge.log accumulates every launch, so the file holds several runs.
+      // `tools(` is the first report of each run; start a new block there and
+      // keep only the last one — an old failure must not read as current.
+      const blocks: string[][] = []
+      for (const line of text.split('\n')) {
+        const at = line.indexOf('[boot-report]')
+        if (at < 0) {
+          continue
+        }
+        // Keep the payload, drop the timestamp prefix: the panel already shows
+        // when the boot happened.
+        const entry = line.substring(at)
+        if (entry.indexOf('[boot-report] tools(') >= 0 || blocks.length === 0) {
+          blocks.push([entry])
+        } else {
+          blocks[blocks.length - 1].push(entry)
+        }
+      }
+      if (blocks.length === 0) {
+        return '尚无启动自检记录（bridge.log 里还没有 boot-report 行）'
+      }
+      const last = blocks[blocks.length - 1]
+      for (const entry of last) {
+        out.push(entry)
+      }
+      return out.join('\n')
+    } catch (error) {
+      return `读取启动自检失败：${(error as Error).message}`
+    }
+  }
+
   crashInfo(): string {
     const crash = this.runtime.lastCrash()
     if (crash === null) {

@@ -49,6 +49,17 @@
   真机（手机 CMM-AL10）：填假 token → 保存 → `dsh-home/.git-token` 出现且内容一致；冷启后
   `bridge.log` 打出 `key: .git-token tightened to 0600 (was 644)`；清空后保存 → 文件被删除。
 
+- **模型目录诊断进了「设置 → 诊断」，并直接显示在模型选择器下方**：`[boot-report] models:` 这行原来
+  只在 `bridge.log` 里，用户没 shell 就看不到。现在 `NodeHost.bridgeReport()` 把它读出来，诊断页有
+  `--- boot report ---` 段；同时设置页模型列表下方会以小号等宽字显示同一行，这样「列表是空的」
+  旁边就有「为什么」。
+  **真机验成（手机 CMM-AL10 / `com.qtepp.harmonygo`）**：诊断页读到的正是
+  `[boot-report] models: deepseek-official=2, deepseek-account=0`——官方 provider 有 2 个模型、
+  账号 provider 没有，这就是「为什么某些 provider 不出现在列表里」的答案。
+  **同一轮修掉一个自己的 bug**：`bridge.log` 是**跨启动累积**的，我第一版按「最后 6 行」截取，
+  结果诊断页里并排出现了两次启动的记录（03:41 与 03:46 各半套）。改为按 `tools(` 作为每轮起点
+  切块、只取最后一块——旧失败才不会读成当前状态。
+
 - **思考深度（reasoning effort）可选了**：`configOptions` 里一直有 `reasoning_effort`（`dsh-acp` 用
   `resolveModelInfo` 的 `defaultEffort` + `efforts` 生成，含「Provider default」一项），但客户端只
   读了 `model`，**这个通道被整个丢掉**——用户只能接受 provider 默认值。现在：`applyAcpConfig`
