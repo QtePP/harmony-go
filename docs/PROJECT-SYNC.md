@@ -123,10 +123,21 @@ WiFi 直连要求两台设备在同一网段；星闪（NearLink）是近场链�
 - 服务 uuid 固定 `7D5F6A2C-1B8E-4C3A-9F10-2A6B7C8D9E01`；分片仍 32KB（≤65535 的端口 MTU）。
 - UI：项目同步面板里多一行「传输：WiFi 直连 / 星闪」，只在 `nearLinkSyncSupported()` 为真时出现；
   星闪发送要「搜索附近设备」选一台，星闪接收打开广告后等对方连；配对码仍然是协议层那道门。
-- **状态（诚实）**：端口/广告/扫描这条腿在两台设备上都能开（两台都报 `canIUse` 为真、面板都出现
-  传输选择），但**两台设备之间的字节通道尚未真机跑通**——星闪对传需要两台设备同时操作 UI，
-  这次会话里自动化点击把设置面板反复关掉，没能在两台设备上同时开好收发。代码就位，
-  验收待一次稳定的人工/自动化双机操作。
+- **状态（诚实，2026-11-23 14:50）**：端口/广告/扫描这条腿在两台设备上都能开（两台都报 `canIUse` 为真、
+  面板都出现传输选择），但**两台设备之间的字节通道尚未跑通**，而且卡点已经定位到 `connect()`，
+  不是 UI：
+  - 双机测试由设备端用例驱动（`entry/src/ohosTest/ets/test/NearLink.test.ets`，见下），
+    用 `aa test … -s role receiver|sender|scan` 分别在两台机器上跑；**`-s` 的键在
+    `AbilityDelegatorArgs.parameters` 里是 `-s role` 这种原样字符串**（日志实测：
+    `keys=[-b,-m,-s role,-s timeout,-s unittest,moduleName]`），不是裸 `role`。
+  - `scan` 侧确实扫到了对端：`NEARLINK-PEER 70:1D:79:0D:23:A9 name=niika的MatePad Mini 悦读版 rssi=-57`，
+    说明发现/广告是通的。
+  - 用该地址 `dataTransfer.connect({address, uuid, mtu:65535})` 直接抛 **`Operation failed.`**；
+    同一时刻 nearlink_service 日志是 `GetEncryptAddr:31 addr is invalid`（扫描返回的是被加密/解析过的
+    地址，connect 需要的是可解析的身份地址，或需先在系统设置里完成星闪配对）。
+  - 所以下一步不是改协议，而是：两台设备先在系统里配对（或改用 `manager.getPairedDevices()` 返回的
+    地址去连），再验证 `connect → writeData/readData`；协议与 UI 侧已就位，`SyncSession` 与 TCP
+    共用同一份收帧/落盘/配对码逻辑，设备内 loopback 用例已把这份逻辑钉住（`ProjectSync.test.ets`）。
 
 ## 7. 还没做
 

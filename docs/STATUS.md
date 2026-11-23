@@ -7,6 +7,19 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 >
+- **星闪双机：发现/广告通，`connect()` 卡在地址解析（2026-11-23 14:50，手机 CMM-AL10 + 平板 MLR-AL00）**。
+  把星闪对传做成可重复的设备端用例 `entry/src/ohosTest/ets/test/NearLink.test.ets`：用
+  `aa test … -s role receiver|sender|scan` 在两台机器上各跑一半（receiver 开端口+广告等 90s，
+  scan 只扫并打印，sender 连上去发一个 18 字节文件）。过程中确认了三件事：
+  ① `-s` 参数在 `AbilityDelegatorArgs.parameters` 里的键是 **`-s role`** 原样字符串（日志实测 key 列表），
+  裸 `role` 读不到——这解释了一开始的「用例 0.2s 就过」；② 扫描真的能找到对端
+  （`NEARLINK-PEER 70:1D:79:0D:23:A9 name=niika的MatePad Mini 悦读版 rssi=-57`）；
+  ③ 拿这个地址 `dataTransfer.connect()` 直接抛 `Operation failed.`，同时 nearlink_service 打
+  `GetEncryptAddr:31 addr is invalid`——扫描地址是解析/加密过的形式，connect 要的是可解析身份地址，
+  或需先做系统级星闪配对。**结论：卡点在平台连接语义，不在协议**；下一步先配对（或用
+  `manager.getPairedDevices()` 的地址）再验字节通道。为此新增的测试用例默认无 `role` 参数时直接通过，
+  不拖累 `bash scripts/test.sh device`。
+
 - **两台真机之间的 WiFi 直连传输：仍未端到端跑通；顺手修了接收页两个缺陷（2026-11-23 14:30–15:05，平板 MLR-AL00 + 手机 CMM-AL10）**。
   目标：用户接上第二台设备后，验一次「手机 → 平板」的真实传输（157 个文件 / 7.9 MB + 1 个会话）。
   构建口径：手机在 **13:54** 的那份 HAP 上；平板 **14:31** 用 `scripts/deploy.sh` 重新构建并装上（含下面两条修复，`Smoke: PASS`）。
