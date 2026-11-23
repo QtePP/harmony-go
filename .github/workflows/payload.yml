@@ -54,9 +54,8 @@ jobs:
       - name: Stage the payload tree
         run: node scripts/assemble-payload.mjs --skip-pack
 
-      # Five suites: 38 (pure-JS search) / 22 (ptc runtime) / 8 (credentials
-      # live) / 20 (boot report) / 20 (git). The ptc suite also runs under
-      # --jitless, because that is the only execution mode the phone has.
+      # Every plugin suite runs under `node --test`; the ptc suite also runs
+      # under --jitless, because that is the only execution mode the phone has.
       - name: Run the plugin suites
         run: bash scripts/test.sh unit
 
@@ -75,7 +74,7 @@ jobs:
         run: |
           DSH_HOME=.build/ci-home node .build/payload/node_modules/@deepseek-ai/dsh/lib/bin.js \
             --profile ohos --patch .build/payload/patches/ohos.patch.yml --dump-config > /tmp/dump.txt
-          for row in boot-report-ohos credentials-live-ohos ptc-runtime-vm tool-fs-search-ohos time-context tool-git tool-user-profile; do
+          for row in boot-report-ohos credentials-live-ohos ptc-runtime-vm tool-fs-search-ohos time-context tool-git tool-office-ohos tool-user-profile context-ledger-ohos; do
             grep -q "id: $row" /tmp/dump.txt || { echo "row missing: $row"; exit 1; }
           done
           for row in tool-bash tool-jobs tool-fs-search ptc-runtime; do

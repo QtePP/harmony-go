@@ -35,6 +35,8 @@ import { FileViewer } from '../view/FileViewer'
 import { FilesPanel } from '../view/FilesPanel'
 import { SessionRail } from '../view/SessionRail'
 import { SettingsSheet } from '../view/SettingsSheet'
+import { ContextPanel } from '../view/ContextPanel'
+import { ContextRecord, parseLedger, recordsFor } from '../model/ContextLedger'
 
 /** dsh pass-through admission budget: encoded bytes and decoded pixels per image. */
 const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024
@@ -144,6 +146,8 @@ struct Index {
   @State currentId: string = ''
   @State running: boolean = false
   @State showSettings: boolean = false
+  @State showContext: boolean = false
+  @State contextRecords: ContextRecord[] = []
   @State showSessions: boolean = false
   @State showViewer: boolean = false
   @State viewerPath: string = ''
@@ -271,6 +275,19 @@ struct Index {
    */
   private updateQueue: AcpUpdatePayload[] = []
   private updateTimer: number = -1
+
+  /**
+   * The context panel is an in-tree overlay, not a modal: the page owns the
+   * back gesture, and without this a back press would leave the app instead
+   * of closing the panel.
+   */
+  onBackPress(): boolean {
+    if (this.showContext) {
+      this.showContext = false
+      return true
+    }
+    return false
+  }
 
   aboutToAppear(): void {
     ShareInbox.setListener((text: string, imagePath: string, imageName: string) => {
@@ -2569,6 +2586,54 @@ struct Index {
     this.diagnostics = lines.join('\n')
   }
 
+  /**
+   * Read the context ledger for the open session.
+   *
+   * The host plugin writes `<filesDir>/dsh-home/context-ledger.jsonl`; the
+   * `.1` generation is included so a rotation mid-session does not blank the
+   * panel. A missing file is the normal state before the first settled turn,
+   * not an error — the panel's empty state explains it.
+   */
+  private loadContextLedger(): void {
+    this.contextRecords = []
+    const context = this.context
+    if (context === null) {
+      return
+    }
+    const current = `${context.filesDir}/dsh-home/context-ledger.jsonl`
+    const previous = `${current}.1`
+    const parts: string[] = []
+    try {
+      if (fs.accessSync(previous)) {
+        parts.push(fs.readTextSync(previous))
+      }
+    } catch (error) {
+      // A torn previous generation is skipped; the current one may still parse.
+    }
+    try {
+      if (fs.accessSync(current)) {
+        parts.push(fs.readTextSync(current))
+      }
+    } catch (error) {
+      // See above: an absent ledger is the pre-first-turn state.
+    }
+    this.contextRecords = recordsFor(parseLedger(parts.join('\n')), this.currentId)
+  }
+
+  /** Open the panel with a fresh read; the ring is the only entry point. */
+  private openContext(): void {
+    this.loadContextLedger()
+    this.showContext = true
+    // The ledger append is queued off the settlement event; a turn that just
+    // ended can still be in flight when the ring is tapped. One delayed read
+    // closes that window without a timer running for the life of the panel.
+    setTimeout(() => {
+      if (this.showContext) {
+        this.loadContextLedger()
+      }
+    }, 400)
+  }
+
   /** The project summary when projectId carries a bound user directory. */
   private boundOf(projectId: string): ProjectSummary | null {
     for (const project of this.projects) {
@@ -2856,6 +2921,7 @@ struct Index {
                   this.refreshDiagnostics()
                   this.showSettings = true
                 },
+                onOpenContext: () => this.openContext(),
                 onOpenFiles: () => {
                   this.filesTick += 1
                   this.showFiles = true
@@ -2939,6 +3005,7 @@ struct Index {
                   this.refreshDiagnostics()
                   this.showSettings = true
                 },
+                onOpenContext: () => this.openContext(),
                 onOpenSessions: () => {
                   this.showSessions = true
                 },
@@ -3006,6 +3073,19 @@ struct Index {
               onDisappear: () => {
                 this.showSessions = false
               }
+            })
+          }
+          // In-tree overlay, not bindContentCover: this Stack already owns the
+          // viewer cover and its parent owns the settings sheet, and a node can
+          // carry only one of those modals (same-node binding breaks the modal).
+          if (this.showContext) {
+            ContextPanel({
+              records: this.contextRecords,
+              sessionTitle: this.title,
+              onClose: () => {
+                this.showContext = false
+              },
+              onRefresh: () => this.loadContextLedger()
             })
           }
         }

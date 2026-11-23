@@ -118,6 +118,7 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 | **会话管理** | 标题搜索、置顶、归档（可切回）、多选批量归档/删除、未读圆点 |
 | **导出对话** | `/导出对话` 把转录写成 Markdown 存进 `workspace/exports/` |
 | **产物面板** | 对话中生成的文件自动归档，支持内嵌预览与全屏查看 |
+| **Office 文档** | 让模型生成/读取 Word（`.docx`）与 Excel（`.xlsx`），App 内原生只读预览（标题/列表/表格/工作表）；旧格式与 PPTX 会引导分享到系统 Office/WPS |
 | **图片** | 相册选择与系统分享输入；全屏查看后可保存到相册 |
 | **回合回撤** | 长按消息可回撤到该轮之前，**并还原该轮写入的文件** |
 | **会话分支** | 从任意消息 fork 出新会话，原会话完整保留 |

@@ -610,15 +610,23 @@ export struct ArtifactDock {
                     this.card(item)
                   }, (item: ArtifactItem) => `${item.path}.${item.exists}`)
                 }
-                .width('100%')
-                // Cards hug the left edge: a short list must not drift to the
-                // centre of the scroll viewport (Row defaults to centred when
-                // it is stretched by a full-width parent).
+                // Do NOT set width('100%') here: a full-width Row makes the
+                // Scroll measure its content as exactly one viewport, so the
+                // cards clip and there is nothing left to swipe. The Row's
+                // intrinsic width is what gives the horizontal Scroll its range.
                 .justifyContent(FlexAlign.Start)
                 .alignItems(VerticalAlign.Top)
+                // Leave the hairline its own lane: without this the bar sits
+                // flush under the first card and reads as a stray underline.
+                .padding({ bottom: 6 })
               }
               .scrollable(ScrollDirection.Horizontal)
-              .scrollBar(BarState.Off)
+              // A persistent hairline is the affordance: a phone has no hover,
+              // and an auto-hidden bar only appears after the user already
+              // guessed the strip was swipeable.
+              .scrollBar(BarState.On)
+              .scrollBarWidth(2)
+              .scrollBarColor($r('app.color.text_tertiary'))
               .align(Alignment.Start)
               .width('100%')
             }
@@ -2205,6 +2213,8 @@ export struct ChatView {
   onSend: (text: string, attachPaths: string[]) => void = () => {}
   onNewSession: () => void = () => {}
   onOpenSettings: () => void = () => {}
+  /** Opens the native context panel (composition + cache + turns). */
+  onOpenContext: () => void = () => {}
   onOpenSessions: () => void = () => {}
   /** Opens the project files browser (workspace tree sheet). */
   onOpenFiles: () => void = () => {}
@@ -2914,22 +2924,6 @@ export struct ChatView {
     return [0, 0]
   }
 
-  /** 「12k/128k · 9%」 — compact enough for a toast, precise enough to act on. */
-  private contextLabel(used: number, size: number): string {
-    const ratio = Math.min(100, Math.round((used / size) * 100))
-    return `上下文 ${this.compactTokens(used)}/${this.compactTokens(size)} · ${ratio}%`
-  }
-
-  private compactTokens(value: number): string {
-    if (value >= 1000000) {
-      return `${(value / 1000000).toFixed(1)}M`
-    }
-    if (value >= 1000) {
-      return `${Math.round(value / 1000)}k`
-    }
-    return `${value}`
-  }
-
   private contextPercent(): number {
     const usage = this.contextUsage()
     return usage[1] > 0 ? Math.min(100, Math.round((usage[0] / usage[1]) * 100)) : 0
@@ -2962,13 +2956,7 @@ export struct ChatView {
       }
       .width(34)
       .height(34)
-      .onClick(() => {
-        const usage = this.contextUsage()
-        this.getUIContext().getPromptAction().showToast({
-          message: this.contextLabel(usage[0], usage[1]),
-          duration: 2000
-        })
-      })
+      .onClick(() => this.onOpenContext())
     }
   }
 

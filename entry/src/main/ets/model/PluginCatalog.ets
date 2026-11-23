@@ -31,7 +31,8 @@ export class PluginCatalog {
     { id: 'tool-subagent-fork', label: '上下文分叉', description: 'fork 继承对话上下文的子代理' },
     { id: 'tool-skill', label: '技能加载', description: '加载技能目录的完整指令' },
     { id: 'plan-mode', label: '计划模式', description: '先规划、确认后再执行' },
-    { id: 'session-title-llm', label: '智能会话标题', description: '由模型生成会话标题' }
+    { id: 'session-title-llm', label: '智能会话标题', description: '由模型生成会话标题' },
+    { id: 'tool-office-ohos', label: 'Office 文档', description: '生成与读取 Word (.docx) / Excel (.xlsx)' }
   ]
 
   /**
@@ -45,7 +46,7 @@ export class PluginCatalog {
     { id: 'shell', label: 'Shell 工具（bash / pwsh）', description: '依赖子进程，平台禁止 fork/exec' },
     { id: 'jobs', label: '后台任务（job_* 工具族）', description: '依赖子进程派生，平台禁止' },
     { id: 'plugin-market', label: '插件市场与插件管理', description: '依赖 pnpm 子进程，平台禁止' },
-    { id: 'office', label: 'Office 文档转换', description: '绑定原生 FFI 库（koffi），无法加载' }
+    { id: 'office-convert', label: 'Office 转换（PDF / 图片）', description: '依赖 LibreOffice 原生引擎或 WASM，鸿蒙无法加载' }
   ]
 
   static rows(disabled: Set<string>): PluginRow[] {
