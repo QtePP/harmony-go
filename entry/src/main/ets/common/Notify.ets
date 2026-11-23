@@ -72,7 +72,7 @@ export class Notify {
       return '已请求通知权限'
     } catch (error) {
       const failure = error as BusinessError
-      return `通知未开启：${failure.message}（可在系统设置 › 通知 › TA Harness 中打开）`
+      return `通知未开启：${failure.message}（可在系统设置 › 通知 › HarmonyGo 中打开）`
     }
   }
 
@@ -101,7 +101,7 @@ export class Notify {
     if (Notify.foreground()) {
       return
     }
-    await Notify.publish('回答已完成', text.length > 0 ? text : '回到 TA Harness 查看结果')
+    await Notify.publish('回答已完成', text.length > 0 ? text : '回到 HarmonyGo 查看结果')
   }
 
   /** The runtime is blocked on the user (approval), which is worth a tap. */

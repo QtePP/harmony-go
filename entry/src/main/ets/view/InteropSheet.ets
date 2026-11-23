@@ -361,7 +361,7 @@ export struct InteropSheet {
             .enabled(this.probing.length === 0)
             .onClick(() => {
               this.probing = 'datashare'
-              void probeDataShare('com.qtepp.taharness').then((result: ProbeResult) => {
+              void probeDataShare('com.qtepp.harmonygo').then((result: ProbeResult) => {
                 this.dataShareResult = result
                 this.probing = ''
               })

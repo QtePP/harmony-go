@@ -31,7 +31,7 @@
 # Prerequisites (one-time, all done in AppGallery Connect):
 #   1. A real-name-verified Huawei developer account.
 #   2. An app created in AGC whose bundleName matches AppScope/app.json5
-#      (currently com.qtepp.taharness) — AGC refuses duplicates.
+#      (currently com.qtepp.harmonygo) — AGC refuses duplicates.
 #   3. A release certificate (.cer) + release provisioning profile (.p7b)
 #      downloaded from AGC, plus the matching keystore (.p12).
 #
@@ -128,8 +128,9 @@ say "构建未签名 release 包（HAP + App Pack）…（含 ~225MB 载荷，�
 
 UNSIGNED="entry/build/default/outputs/default/entry-default-unsigned.hap"
 SIGNED="entry/build/default/outputs/default/entry-default-signed.hap"
-UNSIGNED_APP="build/outputs/default/dshharmony-default-unsigned.app"
-SIGNED_APP="build/outputs/default/dshharmony-default-signed.app"
+# App Pack 的前缀是本地工程目录名（hvigor 用根目录名生成），所以改名/换个目录克隆后这里不用改。
+UNSIGNED_APP="$(ls build/outputs/default/*-default-unsigned.app 2>/dev/null | head -1)"
+SIGNED_APP="${UNSIGNED_APP%-unsigned.app}-signed.app"
 [ -f "$UNSIGNED" ] || die "构建结束但没有未签名产物：$UNSIGNED"
 [ -f "$UNSIGNED_APP" ] || die "构建结束但没有未签名 App Pack：$UNSIGNED_APP"
 
@@ -162,12 +163,12 @@ say "hap-sign-tool 给 .app 容器签名…"
 say "verify-app 校验签名（独立 HAP + .app 容器）…"
 "$JAVA_BIN" -jar "$SIGN_TOOL" verify-app \
   -inFile "$SIGNED" \
-  -outCertChain /tmp/dshharmony-release-verify-cert.cer \
-  -outProfile /tmp/dshharmony-release-verify-profile.p7b
+  -outCertChain /tmp/harmony-go-release-verify-cert.cer \
+  -outProfile /tmp/harmony-go-release-verify-profile.p7b
 "$JAVA_BIN" -jar "$SIGN_TOOL" verify-app \
   -inFile "$SIGNED_APP" \
-  -outCertChain /tmp/dshharmony-release-verify-app-cert.cer \
-  -outProfile /tmp/dshharmony-release-verify-app-profile.p7b
+  -outCertChain /tmp/harmony-go-release-verify-app-cert.cer \
+  -outProfile /tmp/harmony-go-release-verify-app-profile.p7b
 
 say "产物（AGC 上传用 .app）：$SIGNED_APP ($(du -h "$SIGNED_APP" | cut -f1))"
 say "产物（hdc 直装用 .hap）：$SIGNED ($(du -h "$SIGNED" | cut -f1))"

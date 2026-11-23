@@ -68,7 +68,7 @@ def compose(src, out, headline, sub, card_zoom=1.0, crop_bottom=0):
     # brand row
     m = mark(58)
     bg.paste(m, (96, 92), m)
-    draw.text((96 + 58 + 22, 92 + 29), "TA Harness", font=f(EN_DEMI, 34), fill=INK, anchor="lm")
+    draw.text((96 + 58 + 22, 92 + 29), "HarmonyGo", font=f(EN_DEMI, 34), fill=INK, anchor="lm")
 
     # headline
     hf = f(CN_BOLD, 66)

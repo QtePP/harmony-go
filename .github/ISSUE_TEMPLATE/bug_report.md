@@ -31,7 +31,7 @@ assignees: ''
 
 ## 日志
 
-<!-- devecocli log --level E --bundle-name com.qtepp.taharness -->
+<!-- devecocli log --level E --bundle-name com.qtepp.harmonygo -->
 
 ```
 粘贴日志

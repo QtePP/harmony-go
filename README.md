@@ -1,12 +1,12 @@
 <div align="center">
 
-# TA Harness
+# HarmonyGo
 
 **在鸿蒙设备上本地运行 DeepSeek Harness 的原生外壳**
 **A native shell for running DeepSeek Harness locally on HarmonyOS devices.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.0.0-brightgreen)](https://github.com/QtePP/deepseek-harness-harmony/releases)
+[![Release](https://img.shields.io/badge/Release-v1.0.0-brightgreen)](https://github.com/QtePP/harmony-go/releases)
 [![Platform](https://img.shields.io/badge/Platform-HarmonyOS%20%7C%20API%2026-blue)](https://developer.huawei.com/consumer/cn/)
 [![Language](https://img.shields.io/badge/Language-ArkTS-3178C6)](https://developer.huawei.com/consumer/cn/arkts/)
 [![Runtime](https://img.shields.io/badge/Node-v24.2.0-339933)](https://nodejs.org/)
@@ -162,8 +162,8 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 ### 构建
 
 ```bash
-git clone https://github.com/QtePP/deepseek-harness-harmony.git
-cd deepseek-harness-harmony
+git clone https://github.com/QtePP/harmony-go.git
+cd harmony-go
 
 # 1. 装配载荷（把 dsh 及依赖打包进 HAP，约 240MB，首次较慢；版本钉在脚本里）
 node scripts/assemble-payload.mjs
@@ -193,7 +193,7 @@ bash scripts/deploy.sh
 协议在启动期读取，`node::Start` 每进程一次，所以**必须重启应用**才生效。
 
 > **只装一个**：桥固定占用 `127.0.0.1:4517`，且为单客户端。如果设备上还留着旧包名
-> （如 `com.example.dshharmony`）并正在运行，新包会因 `EADDRINUSE` 启动失败并报
+> （如旧名 `com.qtepp.taharness`）并正在运行，新包会因 `EADDRINUSE` 启动失败并报
 > `initialize: Invalid params [stage=exited]`。先 `hdc uninstall <旧包名>` 或 force-stop 旧应用。
 
 ## 技术要点

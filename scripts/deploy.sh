@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 一键把 dshharmony 装到真机：检查设备 → 登录 → 签名 → 构建 → 安装启动。
+# 一键把 HarmonyGo 装到真机：检查设备 → 登录 → 签名 → 构建 → 安装启动。
 #
 # 用法：
 #   bash scripts/deploy.sh                 # 自动选第一台设备
@@ -15,7 +15,7 @@ cd "$ROOT"
 
 # 开源口径：仓库内 build-profile.json5 不带签名。本脚本注入签名构建后自动还原，
 # 崩溃/中断由 trap 兜底，避免签名材料残留在已入库文件里。
-STRIPPED_BAK="/tmp/dshharmony-build-profile.stripped.json5"
+STRIPPED_BAK="/tmp/harmony-go-build-profile.stripped.json5"
 INJECTED_SIGNING=0
 restore_profile() {
   if [ "$INJECTED_SIGNING" = "1" ] && [ -f "$STRIPPED_BAK" ]; then

@@ -1,7 +1,7 @@
 # dsh-go v1.1.0 → 鸿蒙外壳 对齐矩阵（2026-11-15 重做）
 
 > 对照基准：`ccch1mneyyy/dsh-Go` **v1.1.0**，commit `1c465301`（2026-11-15 拉取，`origin/main`）。
-> 本仓：`QtePP/deepseek-harness-harmony`，HEAD 见 git log。
+> 本仓：`QtePP/harmony-go`，HEAD 见 git log。
 > 上一版矩阵基于 dsh-go 的旧快照（单 Flutter 工程、无远程/无桌宠/无插件 UI），**已过时**；
 > 本文替换 `docs/DSH-GO-PARITY.md` 的结论表，旧文保留作历史记录。
 >

@@ -113,7 +113,7 @@ devecocli signature generate  # 生成 .p12/.cer/.p7b 并写回 build-profile.js
 
 | 报错/现象 | 原因 | 处理 |
 |---|---|---|
-| bundleName 不可用 | `com.qtepp.taharness` 在 AGC 全局唯一命名空间里可能已被占用 | 改 `AppScope/app.json5` 的 `bundleName` 为更独特的名字，如 `com.yourname.dshharmony` |
+| bundleName 不可用 | `com.qtepp.harmonygo` 在 AGC 全局唯一命名空间里可能已被占用 | 改 `AppScope/app.json5` 的 `bundleName` 为更独特的名字，如 `com.yourname.harmonygo` |
 | 未实名 / 无团队权限 | 账号状态问题 | `devecocli auth status`、`devecocli auth team` |
 | 生成成功但装不上 | profile 里没有这台设备的 UDID | 连上设备后重新 `signature generate --force` |
 
@@ -138,7 +138,7 @@ debug-info.device-ids: [ ...只有你自己的几台设备... ]
 
 1. **注册并实名**华为开发者账号（个人 ¥99/年），
    <https://developer.huawei.com/consumer/cn/>
-2. **创建应用**：AGC → 我的应用 → 新建，bundleName 填 `com.qtepp.taharness`
+2. **创建应用**：AGC → 我的应用 → 新建，bundleName 填 `com.qtepp.harmonygo`
    （必须与 `AppScope/app.json5` 完全一致；AGC 全局唯一，被占用就得换）
 3. **申请发布证书**：AGC → 证书、APP ID 和 Profile → 证书 → 新建（`.cer`）
 4. **生成密钥库**：用 DevEco Studio 的 Generate Key and CSR，得到 `.p12` + `.csr`，

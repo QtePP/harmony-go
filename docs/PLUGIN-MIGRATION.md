@@ -2,7 +2,7 @@
 
 调研对象：`deepseek-harness/packages/client/` 下 **56 个 `ui-*` 客户端插件**（另有 connection /
 store / modules / shortcuts / locale 等基础包）。
-目标：判断哪些能力值得、且能够迁到 `dshharmony` 的原生 ArkUI 前端。
+目标：判断哪些能力值得、且能够迁到 HarmonyGo 的原生 ArkUI 前端。
 
 ---
 

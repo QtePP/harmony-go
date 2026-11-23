@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢你有兴趣改进 TA Harness。这个项目是鸿蒙平台上对 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的**宿主适配层**，因此有几条与普通前端项目不同的约定。
+感谢你有兴趣改进 HarmonyGo。这个项目是鸿蒙平台上对 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的**宿主适配层**，因此有几条与普通前端项目不同的约定。
 
 ## 开始之前
 
@@ -114,7 +114,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 1. **设备型号与系统版本**（API 级别）
 2. **复现步骤**，越具体越好
 3. **实际行为 vs 预期行为**
-4. 相关日志：`devecocli log --level E --bundle-name com.qtepp.taharness`
+4. 相关日志：`devecocli log --level E --bundle-name com.qtepp.harmonygo`
 5. 若涉及界面，附截图
 
 搜索已有 Issue 后再提，避免重复。

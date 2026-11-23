@@ -1,15 +1,16 @@
-# AGENTS.md — dshharmony 多智能体协作公约与统一语言
+# AGENTS.md — HarmonyGo 多智能体协作公约与统一语言
 
 > 本文件面向在本仓库工作的所有 AI 代理（deveco code、workbuddy、GitHub Copilot 等）与人类协作者。
 > 它是**统一语言（ubiquitous language）与口径的唯一权威**：与 docs/、历史对话或任何 agent 的
 > 会话记忆冲突时，以本文件与当前代码为准；口径变更必须同一 commit 修订本文件。
-> 最后对齐：2026-11-20。
+> 最后对齐：2026-11-23（改名 HarmonyGo）。
 
 ## 1. 项目身份（一句话口径）
 
-**本仓库是 dsh 的鸿蒙外壳，dsh 是这个仓库唯一的大脑。**
+**HarmonyGo 是 dsh 的鸿蒙外壳，dsh 是这个仓库唯一的大脑。**
+（产品名/应用显示名 **HarmonyGo**，包名 `com.qtepp.harmonygo`；旧名 TA Harness / `com.qtepp.taharness` 仅出现在历史记录里。）
 
-- 仓库：<https://github.com/QtePP/deepseek-harness-harmony>（MIT）
+- 仓库：<https://github.com/QtePP/harmony-go>（MIT；2026-11-23 由 `deepseek-harness-harmony` 改名，GitHub 旧地址会重定向）
 - 形态：原生 ArkUI 客户端 + **同一应用进程内**的 dsh 运行时；不套壳浏览器、不投屏、不连电脑。
 - 覆盖形态：`deviceTypes` = phone / tablet / **2in1**（鸿蒙电脑），840vp 布局断点切换单/双栏。
 - 目标平台：API 26 / HarmonyOS 7.0.0，arm64-v8a，minAPI 26（装不上 HarmonyOS 6.x）。
@@ -20,7 +21,7 @@
 | 术语 | 定义 | 锚点 |
 |---|---|---|
 | **dsh** | 唯一的「大脑」：npm 包 `@deepseek-ai/dsh`（**0.2.2-rc.5**，依赖树 **676 包**，npm install 实测 added 计数）。会话、工具调用、插件、模型适配、持久化全部来自它；本仓库不含任何 AI 能力 | 载荷内 node_modules |
-| **Harness / 外壳** | 本仓库自身：ArkUI 界面 + 宿主适配层 | 本仓库 |
+| **HarmonyGo / 外壳** | 产品名（应用显示名）**HarmonyGo**，包名 `com.qtepp.harmonygo`；本仓库自身：ArkUI 界面 + 宿主适配层。**旧名 TA Harness / `com.qtepp.taharness`** 只留在历史记录里，代码/资源/运维命令一律用新名 | 本仓库 |
 | **Payload / 载荷** | `dsh-payload.zip`（≈240MB 十进制 / 227 MiB）：dsh 及其依赖打进 HAP rawfile，首启解包到沙箱 | `scripts/assemble-payload.mjs`、`entry/.../host/Payload.ets` |
 | **Bridge / 桥** | 127.0.0.1:4517 回环 TCP，承载 newline-delimited JSON-RPC 2.0；bootstrap 把 socket 伪装成 dsh 的 stdio。**单客户端**：新连接 `replacing previous client` 顶掉旧连接 | `host/bootstrap.cjs`、`entry/.../model/DshClient.ets` |
 | **Host 层** | 把 Node 拉进鸿蒙进程的适配层：NAPI dlopen `libnode.so` + `node::Start` | `entry/.../host/NodeHost.ets`、`@fellow99/node-bridge` |
@@ -43,7 +44,7 @@
 
 ### 2.1 英文口径（对外文案用，勿自创）
 
-一句话定位：**A native shell for running DeepSeek Harness locally on HarmonyOS devices.**
+一句话定位：**HarmonyGo — a native shell for running DeepSeek Harness locally on HarmonyOS devices.**
 （`oh-package.json5` 的 `description` 是另一套同义表述：`native ArkUI client with an in-process Node runtime`。）
 
 展开句：*No WebView, no screen mirroring, no tethering to a computer — the whole runtime lives inside the app process.*
@@ -242,7 +243,7 @@ ACP 实测契约（勿凭直觉改）：
   拒收，与包内 HAP 是否签名无关。**包内 HAP 本来就该是未签名的**（hvigor PackageApp
   源码实证：所有 `getModuleTargetOutputFileName` 调用都传 signed=false；SignApp 只签
   容器；AGC 分发时再拆包重签——官方 FAQ「其中的HAP包没有签名」说的就是这个设计）。
-  上传 `build/outputs/default/dshharmony-default-signed.app`（容器已签名）。
+  上传 `build/outputs/default/<工程目录名>-default-signed.app`（容器已签名；前缀取本地工程目录名，见 `scripts/build-release.sh` 的 glob）。
 - **发布 Profile 签的 HAP 平台禁止 hdc 直装**（2026-10-31 真机实测：`code:9568322
   signature verification failed due to not trusted app source`；官方 FAQ「手动签名失败的
   常见问题」场景六——发布证书签名的应用不能通过 hdc 安装运行）。发布包只走 AGC 分发；

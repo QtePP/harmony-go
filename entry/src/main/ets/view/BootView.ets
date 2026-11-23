@@ -103,7 +103,7 @@ export struct BootView {
         .scale({ x: this.logoScale, y: this.logoScale })
         .opacity(this.logoOpacity)
 
-      Text('TA Harness')
+      Text('HarmonyGo')
         .fontSize(34)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))

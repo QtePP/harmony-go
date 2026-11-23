@@ -3035,7 +3035,7 @@ export struct ChatView {
                 .height(64)
                 .objectFit(ImageFit.Contain)
 
-              Text('TA Harness')
+              Text('HarmonyGo')
                 .fontSize(20)
                 .fontWeight(FontWeight.Bold)
                 .fontColor($r('app.color.text_primary'))

@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+### 变更
+
+- **改名 HarmonyGo（2026-11-23）**：产品名 `TA Harness` → **HarmonyGo**（桌面图标名、启动页、对话页标题、
+  通知文案、隐私政策、README/CONTRIBUTING 标题）；包名 `com.qtepp.taharness` → `com.qtepp.harmonygo`；
+  仓库 `deepseek-harness-harmony` → `harmony-go`。
+  **包名一改就是换 App**：新包不能覆盖升级旧包（沙箱数据不迁移，旧包里的会话/密钥/工作区都留在旧 App 里）；
+  两者同时装着会抢 `127.0.0.1:4517`——桥是固定端口 + 单客户端，旧包在跑时新包会以 `EADDRINUSE` 起不来，
+  所以先 force-stop 或卸载旧包。签名 Profile 绑 bundleName，换名后要重跑
+  `devecocli signature generate --force`。构建产物的 `.app` 前缀来自本地工程目录名，
+  `build-release.sh` 已改成 glob 取，不再写死。
+
 ### 新增
 
 - **产出的文件可以直接分享给别的 App（长按文件 / 预览页「分享」）**：模型写的文件以前只有两条出口——预览页把它
@@ -419,5 +430,5 @@
 - 设备端不做图片降采样，原尺寸上传由服务端投影
 - 发布证书签名的 HAP 平台禁止 `hdc` 直装，只能经 AGC 分发
 
-[Unreleased]: https://github.com/QtePP/deepseek-harness-harmony/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/QtePP/deepseek-harness-harmony/releases/tag/v1.0.0
+[Unreleased]: https://github.com/QtePP/harmony-go/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/QtePP/harmony-go/releases/tag/v1.0.0

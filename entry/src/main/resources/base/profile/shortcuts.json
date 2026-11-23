@@ -6,7 +6,7 @@
       "icon": "$media:startIcon",
       "wants": [
         {
-          "bundleName": "com.qtepp.taharness",
+          "bundleName": "com.qtepp.harmonygo",
           "moduleName": "entry",
           "abilityName": "EntryAbility",
           "parameters": {

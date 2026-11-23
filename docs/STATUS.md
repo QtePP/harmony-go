@@ -28,6 +28,21 @@
   `dircfling` 会过头到顶/底，**只有 `ui drag` 能可控滚动**。另外 dump 偶发
   `Empty dumpLayout response from device`，别当成「面板已关闭」。
 
+- **改名 HarmonyGo：显示名与新包名在手机上闭环（2026-11-23 10:00，Mate 90 Pro Max）**。
+  产品名 `TA Harness` → **HarmonyGo**、包名 `com.qtepp.taharness` → **`com.qtepp.harmonygo`**、
+  仓库 `deepseek-harness-harmony` → `harmony-go`。
+  真机链路：`devecocli signature generate --force`（**profile 绑 bundleName，换包名必须重签**，否则装不上）
+  → 构建 → `com.qtepp.harmonygo` 安装启动成功。证据：启动页显示 **HarmonyGo**；
+  `bridge-status.json` = `state: running / profile: ohos / port: 4517 / node: v24.2.0`；
+  `boot-report` 仍 `tools(27)`（含 `git` / `user_profile`），`web: search=auto … fetch=ready`。
+  **改名特有的坑（真机撞到）**：旧包 `com.qtepp.taharness` 还装着，我先 force-stop 它，
+  它**又自己起来了**（21:00:08 的进程，`bridge-status` 也报 `running / 4517`）——桥是**固定端口 + 单客户端**，
+  谁先抢到 4517 谁活；新包那一次启动卡在载荷解包之后（`dsh-home/` 都没建），
+  把旧包再 force-stop 后才正常 boot。**所以改名后要卸载旧包**
+  （`hdc shell bm uninstall -n com.qtepp.taharness`，注意连旧沙箱数据一起删）**或者严格一次只开一个**。
+  另外 `.app` 产物前缀来自本地工程目录名，`scripts/build-release.sh` 已改成 glob 取，不再写死 `dshharmony-`；
+  本地仓库目录仍叫 `dshharmony`（会话工作区），改名留给用户自己 `mv`。
+
 - **长按文件就能分享；设置面板在手机上重新够得到（2026-11-23 09:15，Mate 90 Pro Max）**。
   换到**手机**形态：`const.product.name` = HUAWEI Mate 90 Pro Max 典藏版、`model` = CMM-AL10、
   `devicetype` = phone、HarmonyOS 7.0.0.111、1320×2848 —— 本仓**第一次在 <840vp 单栏**上验
