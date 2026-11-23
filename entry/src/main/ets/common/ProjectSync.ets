@@ -521,8 +521,8 @@ export async function sendProjectOver(
     reader.push(bytes)
   })
 
-  const waitFor = async (wanted: string): Promise<SyncFrame> => {
-    for (let i = 0; i < 200; i++) {
+  const waitFor = async (wanted: string, attempts: number = 200): Promise<SyncFrame> => {
+    for (let i = 0; i < attempts; i++) {
       const frameOrNull = reader.next()
       if (frameOrNull !== null) {
         if (frameOrNull.header.t === wanted) {
@@ -625,12 +625,13 @@ export async function sendProjectOver(
   await link.send(frame({ t: T_DONE, files: filesDone, bytes: bytesDone }))
   if (link.needsAck()) {
     // Closing immediately after the last write is what lost data on 星闪: the
-    // receiving side had not drained the link yet. Wait for its ack, but do not
-    // turn a missing ack into a failed transfer — the tree is on its way.
+    // receiving side had not drained the link yet. The ack also proves the
+    // receiver got every frame — without it a missing tail used to look like a
+    // successful send while the other side sat at 43%.
     try {
-      await waitFor(T_ACK)
+      await waitFor(T_ACK, 600)
     } catch (error) {
-      // Best effort: the receiver may be older code that does not ack.
+      throw new Error('对方没有确认接收完成（可能中途断开或丢包）')
     }
   }
   onProgress({
@@ -717,6 +718,8 @@ export class SyncSession {
   private bytesDone: number = 0
   private filesDone: number = 0
   private sessionsJson: string = ''
+  private stallTimer: number = -1
+  private static readonly STALL_MS: number = 30000
   private manifestParts: Uint8Array[] = []
   private manifestExpected: number = 0
   private sessionsParts: Uint8Array[] = []
@@ -744,8 +747,30 @@ export class SyncSession {
     this.onFinished = onFinished
   }
 
+  /**
+   * Start (or restart) the no-progress timer.
+   *
+   * A 星闪 link can silently drop a frame and leave the receiver waiting for
+   * bytes that never come; without this the UI would sit on a percentage
+   * forever. Thirty seconds of no complete frame is not a slow link.
+   */
+  private touchStallWatchdog(): void {
+    this.clearStallWatchdog()
+    this.stallTimer = setTimeout(() => {
+      void this.finish('传输中断：30 秒没有收到新数据')
+    }, SyncSession.STALL_MS)
+  }
+
+  private clearStallWatchdog(): void {
+    if (this.stallTimer !== -1) {
+      clearTimeout(this.stallTimer)
+      this.stallTimer = -1
+    }
+  }
+
   /** Feed bytes from the transport; frames are processed as they complete. */
   async push(bytes: ArrayBuffer): Promise<void> {
+    this.touchStallWatchdog()
     this.reader.push(bytes)
     let box = this.reader.next()
     while (box !== null) {
@@ -776,6 +801,7 @@ export class SyncSession {
   }
 
   private async handle(box: SyncFrameBox): Promise<void> {
+    this.touchStallWatchdog()
     const header = box.header
     const data = box.data
     try {
@@ -929,6 +955,7 @@ export class SyncSession {
       return
     }
     this.finished = true
+    this.clearStallWatchdog()
     if (this.currentFile !== null) {
       try {
         fs.closeSync(this.currentFile)

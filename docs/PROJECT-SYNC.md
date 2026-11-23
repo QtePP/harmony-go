@@ -142,6 +142,11 @@ WiFi 直连要求两台设备在同一网段；星闪（NearLink）是近场链�
     `writeData` 直接报 `Operation failed.`（真机日志：`DataTransfer.WriteData callTimes=4 success=2 errorCodeCount=2`）。
     TCP 保持 v1（manifest 塞在 hello 里，宿主机对端脚本不用改）；星闪用 v2：hello 只带分片数，
     manifest 与 sessions 走 `blob` 帧，接收端拼齐后才回 `accept`。122 文件（含 40KB 二进制）双机 4/4 验过。
+  ⑥ **别把「发送方 100%、接收方 43%」当成对方慢**：这是真机遇到的一次卡死。发送端最后一帧 `writeData`
+   成功当天就报了「已发送」，等接收端 `ack` 等了 10 秒没等到，把错误吞掉后直接断开链路；接收端还在等
+   后面的字节，于是永远停在 43%。两处都改了：星闪链路**必须**收到 `ack` 才算发送成功（30s 超时后报
+   「对方没有确认接收完成」）；接收端加了**30 秒无新数据的看门狗**，卡住会报「传输中断」而不是干等；
+   另外星闪写入加了 **4ms 节流**，避免持续高速写把接收端队列冲爆（1.5MB + 122 文件复测两端 4/4）。
   诊断方法也沉淀了一条：测试进程的日志不可靠（hilog 取不到、`filesDir` 指向不存在的模块目录），
   改成 `setNearLinkLog()` 注入一个写 `context.cacheDir` 的 sink，用 `hdc shell cat` 取——就是靠它
   看到「连接 10 秒后才 CONNECTED」「32KB 被截成 7253」这两个关键事实。

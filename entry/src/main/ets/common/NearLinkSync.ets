@@ -39,6 +39,9 @@ const NEARLINK_MTU: number = 65535
  */
 const SYNC_NEARLINK_CHUNK_BYTES: number = 4 * 1024
 
+/** Pause between writes so the receiver's queue is not overrun. */
+const PACE_MS: number = 4
+
 /**
  * A place to put facts the radio will not tell us through the API.
  *
@@ -231,14 +234,27 @@ export class NearLinkSyncLink implements SyncLink {
     })
     nearLinkLog(`link connect attempt address=${this.address} mtu=${mtu}`)
     try {
-      await dataTransfer.connect({ address: this.address, uuid: NEARLINK_SYNC_UUID, mtu: mtu })
+      // BASIC is the mode that accepts our packet sizes here (RELIABLE refused
+      // 4KB writes with 1009700099); loss is handled by pacing the writes and
+      // by requiring the receiver's ack before the sender reports success.
+      await dataTransfer.connect({
+        address: this.address,
+        uuid: NEARLINK_SYNC_UUID,
+        mtu: mtu,
+        transferMode: dataTransfer.TransferMode.BASIC
+      })
     } catch (error) {
       // The stack refuses an oversized packet request outright; step down to
       // sizes that have been seen to work instead of failing the transfer.
       nearLinkLog(`link connect mtu=${mtu} refused ${JSON.stringify(error)}`)
       const fallback = mtu > 1024 ? 1024 : 512
       this.mtu = fallback
-      await dataTransfer.connect({ address: this.address, uuid: NEARLINK_SYNC_UUID, mtu: fallback })
+      await dataTransfer.connect({
+        address: this.address,
+        uuid: NEARLINK_SYNC_UUID,
+        mtu: fallback,
+        transferMode: dataTransfer.TransferMode.BASIC
+      })
     }
     // connect() resolving only means the request was accepted: on hardware the
     // port channel went CONNECTED about ten seconds later, and frames written
@@ -268,13 +284,33 @@ export class NearLinkSyncLink implements SyncLink {
   }
 
   async send(bytes: ArrayBuffer): Promise<void> {
-    // writeData is per packet; the protocol's 32KB chunk keeps us under the
-    // negotiated MTU, and one chunk in flight gives backpressure.
+    // writeData is per packet. The size the stack actually accepts varies with
+    // the transfer mode and the peer, and an oversized write fails with the
+    // generic 1009700099 — so a refused frame is split and retried rather than
+    // failing the whole transfer. Frame boundaries do not matter to the
+    // receiver: it reassembles from bytes.
+    await this.writeFrame(bytes, 0)
+  }
+
+  private async writeFrame(bytes: ArrayBuffer, depth: number): Promise<void> {
     try {
       await dataTransfer.writeData({ address: this.address, uuid: NEARLINK_SYNC_UUID, data: bytes })
+      // The link exposes no window; writing as fast as the API accepts them
+      // overran the receiver on a multi-MB transfer (it stalled mid-frame while
+      // the sender had already finished). A few ms per write keeps up without
+      // drowning it — a whole workspace still takes seconds.
+      if (PACE_MS > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, PACE_MS))
+      }
+      return
     } catch (error) {
-      nearLinkLog(`link write failed bytes=${bytes.byteLength} ${JSON.stringify(error)}`)
-      throw new Error((error as Error).message)
+      nearLinkLog(`link write failed bytes=${bytes.byteLength} depth=${depth} ${JSON.stringify(error)}`)
+      if (bytes.byteLength <= 256 || depth >= 6) {
+        throw new Error((error as Error).message)
+      }
+      const half = Math.floor(bytes.byteLength / 2)
+      await this.writeFrame(bytes.slice(0, half), depth + 1)
+      await this.writeFrame(bytes.slice(half), depth + 1)
     }
   }
 

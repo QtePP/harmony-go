@@ -144,7 +144,10 @@ export default function nearLinkSyncTest() {
       writeText(`${root}/src/note.txt`, 'across the radio\n')
       // Bigger than one packet by two orders of magnitude, so the chunking path
       // (and the negotiated payload cap) is exercised too.
-      writeZeros(`${root}/src/big.bin`, 40000)
+      // Half again the size of the workspace that exposed the 43% stall, so a
+      // dropped packet or a stalled frame shows up in the test rather than in
+      // someone's UI.
+      writeZeros(`${root}/src/big.bin`, 1500000)
       // Enough entries that the manifest itself exceeds one 星闪 packet: the
       // control frames have to be split or the hello write is refused.
       const many = `${root}/src/many`
@@ -193,7 +196,7 @@ export default function nearLinkSyncTest() {
         await receiver.close()
         expect(report === null ? -1 : (report as SyncReport).files).assertEqual(122)
         expect(fs.statSync(`${root}/dst/note.txt`).size).assertEqual(17)
-        expect(fs.statSync(`${root}/dst/big.bin`).size).assertEqual(40000)
+        expect(fs.statSync(`${root}/dst/big.bin`).size).assertEqual(1500000)
         removeTree(root)
         return
       }
