@@ -30,6 +30,7 @@
 |---|---|---|
 | `hello` | 发送 → 接收 | `{version, code, name, files, bytes, entries:[{path,size}]}` |
 | `sessions` | 发送 → 接收 | 可选：勾选会话的 JSON（`[{id,title,updatedAt,raw}]`，`raw` 是本地存储的原始转录） |
+| `blob` | 发送 → 接收 | **v2（星闪）**：清单/会话太大时的分片，`kinds=manifest|sessions` + `chunkIndex`；接收端拼齐后才 `accept` |
 | `accept` / `deny` | 接收 → 发送 | 码对 → accept；错 → deny（附原因） |
 | `file` | 发送 → 接收 | 开始一个文件 `{path, size}` |
 | `chunk` | 发送 → 接收 | 一块数据，默认 **32KB**（塞得进星闪 65535 字节的包上限） |
@@ -137,6 +138,10 @@ WiFi 直连要求两台设备在同一网段；星闪（NearLink）是近场链�
   ④ **发送端不能在最后一帧后立刻断开**：`writeData` resolve 只是本地栈收下，接收端还没读完就
      `disconnect` 会丢尾巴。协议加了 `ack` 帧：接收端落盘后回 `{t:'ack'}`，星闪发送端等到 ack
      再关链路（TCP 不需要，`SyncLink.needsAck()` 区分）。
+  ⑤ **控制帧也要分片**：整个工作区的 manifest（157 个文件 ≈7KB）一帧塞不进星闪 4KB 的包，
+    `writeData` 直接报 `Operation failed.`（真机日志：`DataTransfer.WriteData callTimes=4 success=2 errorCodeCount=2`）。
+    TCP 保持 v1（manifest 塞在 hello 里，宿主机对端脚本不用改）；星闪用 v2：hello 只带分片数，
+    manifest 与 sessions 走 `blob` 帧，接收端拼齐后才回 `accept`。122 文件（含 40KB 二进制）双机 4/4 验过。
   诊断方法也沉淀了一条：测试进程的日志不可靠（hilog 取不到、`filesDir` 指向不存在的模块目录），
   改成 `setNearLinkLog()` 注入一个写 `context.cacheDir` 的 sink，用 `hdc shell cat` 取——就是靠它
   看到「连接 10 秒后才 CONNECTED」「32KB 被截成 7253」这两个关键事实。

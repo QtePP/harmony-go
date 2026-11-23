@@ -215,7 +215,12 @@ export struct SyncSheet {
       this.report = report
       this.message = `已发送 ${report.files} 个文件 · ${this.sizeText(report.bytes)}`
     } catch (error) {
-      this.message = `发送失败：${(error as Error).message}`
+      const reason = (error as Error).message
+      if (reason.indexOf('Operation failed') >= 0) {
+        this.message = '发送失败：星闪拒绝了这一帧（检查对方是否还在「接收」、两台是否已配对，然后重试）'
+      } else {
+        this.message = `发送失败：${reason}`
+      }
     } finally {
       this.busy = false
       this.cancelRequested = false

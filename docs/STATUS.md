@@ -7,6 +7,18 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 >
+- **星闪发送整棵工作区失败 → 控制帧分片修好（2026-11-23 16:12，手机 CMM-AL10 ↔ 平板 MLR-AL00）**。
+  用户按操作路径发整棵工作区，界面报「发送失败 operation failed」。真机日志定位：
+  `createPort` / `dataTransfer.connect` 都 success，但 **`DataTransfer.WriteData callTimes=4 success=2
+  errorCodeCount=2`**——失败的是大帧，不是连接。原因：157 个文件的 manifest ≈7KB，
+  星闪一包只吃 4KB，`hello` 帧被拒。
+  修法：TCP 保持 v1（manifest 内联在 hello，宿主机对端脚本无需改）；星闪走 v2——hello 只带
+  `manifestChunks`/`sessionsChunks`，清单与会话改用 `blob` 分片帧，接收端拼齐再回 `accept`。
+  同时给 UI 接了 `setNearLinkLog` 写 `cacheDir/nl-ui.log`（下次失败可直接 `hdc shell cat` 取证），
+  并把 `Operation failed.` 的提示改成可行动的话。
+  验证：设备端用例扩到 **122 个文件**（其中 120 个小文件把 manifest 顶过 4KB）+ 40KB 二进制，
+  两端 `Tests run: 4, Pass: 4`，接收端 `files=122 error=[]`；`arkts/local/device` 全绿。
+
 - **星闪双机端到端跑通（2026-11-23 15:38，手机 CMM-AL10 ↔ 平板 MLR-AL00）**。设备端用例
   `entry/src/ohosTest/ets/test/NearLink.test.ets` 两台各跑一半（`-s role receiver|sender`，
   用 `-s peerName MatePad` 按名字选对端），两端都 `Tests run: 4, Failure: 0, Error: 0, Pass: 4`：

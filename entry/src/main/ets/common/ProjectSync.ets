@@ -70,6 +70,7 @@ const T_FILE: string = 'file'
 const T_CHUNK: string = 'chunk'
 const T_FILE_END: string = 'fileEnd'
 const T_SESSIONS: string = 'sessions'
+const T_BLOB: string = 'blob'
 const T_ACK: string = 'ack'
 const T_DONE: string = 'done'
 const T_ERROR: string = 'error'
@@ -85,6 +86,11 @@ interface SyncFrame {
   files?: number
   bytes?: number
   entries?: SyncEntry[]
+  /** v2 control transfer: how much arrives in `blob` frames. */
+  manifestChunks?: number
+  sessionsChunks?: number
+  chunkIndex?: number
+  kind?: string
 }
 
 /** One decoded frame: parsed header plus its payload, if any. */
@@ -388,6 +394,14 @@ export interface SyncLink {
    */
   needsAck(): boolean
   /**
+   * Whether control frames (manifest, sessions) must be split.
+   *
+   * A 星闪 port refuses a frame bigger than its packet size, and a workspace
+   * manifest for a few hundred files is several KB; TCP has no such limit and
+   * keeps sending the manifest inside `hello` so the host peer stays compatible.
+   */
+  splitControl(): boolean
+  /**
    * Largest payload one `send` may carry. TCP takes the protocol's full chunk;
    * a 星闪 port is capped by the negotiated packet size, so the sender has to
    * ask instead of assuming 32KB fits everywhere.
@@ -439,6 +453,10 @@ export class TcpSyncLink implements SyncLink {
   }
 
   needsAck(): boolean {
+    return false
+  }
+
+  splitControl(): boolean {
     return false
   }
 
@@ -520,18 +538,45 @@ export async function sendProjectOver(
     throw new Error('对方没有回应（可能不在接收模式）')
   }
 
-  await link.send(frame({
-    t: T_HELLO, version: 1, code: code, name: name,
-    files: entries.length, bytes: total, entries: entries
-  }))
+  const sendBlob = async (kind: string, payload: Uint8Array, chunks: number): Promise<void> => {
+    const slice = Math.max(256, link.maxPayload() - 128)
+    for (let index = 0; index < chunks; index++) {
+      const start = index * slice
+      const end = Math.min(payload.length, start + slice)
+      await link.send(frame({ t: T_BLOB, kind: kind, chunkIndex: index }, payload.slice(start, end).buffer as ArrayBuffer))
+    }
+  }
+
+  const sessionsBytes = encodeUtf8(sessionsJson)
+  if (link.splitControl()) {
+    // Control frames carry several KB that a 星闪 port cannot take in one
+    // packet, so the manifest and the conversations are chunked; the receiver
+    // acks once the manifest is whole.
+    const manifestBytes = encodeUtf8(JSON.stringify(entries))
+    const slice = Math.max(256, link.maxPayload() - 128)
+    const manifestChunks = Math.ceil(manifestBytes.length / slice)
+    const sessionsChunks = sessionsBytes.length === 0 ? 0 : Math.ceil(sessionsBytes.length / slice)
+    await link.send(frame({
+      t: T_HELLO, version: 2, code: code, name: name,
+      files: entries.length, bytes: total,
+      manifestChunks: manifestChunks, sessionsChunks: sessionsChunks
+    }))
+    await sendBlob('manifest', manifestBytes, manifestChunks)
+    if (sessionsChunks > 0) {
+      await sendBlob('sessions', sessionsBytes, sessionsChunks)
+    }
+  } else {
+    await link.send(frame({
+      t: T_HELLO, version: 1, code: code, name: name,
+      files: entries.length, bytes: total, entries: entries
+    }))
+  }
   await waitFor(T_ACCEPT)
-  // Conversations ride on their own frame before the files: they are a few
-  // hundred KB of JSON at most, and keeping them out of the manifest means the
-  // receiver can import them with the same code path that reads its own store,
-  // instead of unpacking a pseudo-file.
-  if (sessionsJson.length > 0) {
-    const encoded = encodeUtf8(sessionsJson)
-    await link.send(frame({ t: T_SESSIONS }, encoded.buffer as ArrayBuffer))
+  // Over TCP the conversations ride on their own frame: a few hundred KB of
+  // JSON at most, and keeping them out of the manifest means the receiver can
+  // import them with the same code path that reads its own store.
+  if (!link.splitControl() && sessionsBytes.length > 0) {
+    await link.send(frame({ t: T_SESSIONS }, sessionsBytes.buffer as ArrayBuffer))
   }
 
   let filesDone = 0
@@ -672,6 +717,10 @@ export class SyncSession {
   private bytesDone: number = 0
   private filesDone: number = 0
   private sessionsJson: string = ''
+  private manifestParts: Uint8Array[] = []
+  private manifestExpected: number = 0
+  private sessionsParts: Uint8Array[] = []
+  private sessionsExpected: number = 0
   private currentFile: fs.File | null = null
   private currentPath: string = ''
   private currentSize: number = 0
@@ -736,16 +785,51 @@ export class SyncSession {
           await this.finish('配对码不对，已拒绝')
           return
         }
-        this.entries = header.entries === undefined ? [] : header.entries
-        let total = 0
-        for (const entry of this.entries) {
-          total += entry.size
+        this.manifestParts = []
+        this.sessionsParts = []
+        this.manifestExpected = header.manifestChunks === undefined ? 0 : header.manifestChunks
+        this.sessionsExpected = header.sessionsChunks === undefined ? 0 : header.sessionsChunks
+        if (this.manifestExpected > 0) {
+          // v2: entries arrive in blob frames; accept only once the manifest is
+          // whole, because the sender must not stream files before we know
+          // what to expect.
+          return
         }
-        await this.sendFn(frame({ t: T_ACCEPT }))
-        this.onProgress({
-          phase: 'receive', filesDone: 0, filesTotal: this.entries.length,
-          bytesDone: 0, bytesTotal: total, detail: '开始接收'
-        })
+        this.entries = header.entries === undefined ? [] : header.entries
+        await this.acceptManifest()
+        return
+      }
+      if (header.t === T_BLOB) {
+        if (data === null) {
+          return
+        }
+        const kind = header.kind === undefined ? 'manifest' : header.kind
+        const parts = kind === 'sessions' ? this.sessionsParts : this.manifestParts
+        const expected = kind === 'sessions' ? this.sessionsExpected : this.manifestExpected
+        const index = header.chunkIndex === undefined ? -1 : header.chunkIndex
+        if (index < 0 || index >= expected || parts.length >= expected) {
+          await this.finish('控制帧序号不对')
+          return
+        }
+        parts.push(new Uint8Array(data))
+        if (parts.length < expected) {
+          return
+        }
+        const joined = this.joinParts(parts)
+        if (kind === 'sessions') {
+          this.sessionsJson = decodeUtf8(joined)
+          this.onSessions(this.sessionsJson)
+          return
+        }
+        let parsed: SyncEntry[] = []
+        try {
+          parsed = JSON.parse(decodeUtf8(joined)) as SyncEntry[]
+        } catch (error) {
+          await this.finish('清单解析失败')
+          return
+        }
+        this.entries = parsed
+        await this.acceptManifest()
         return
       }
       if (header.t === T_SESSIONS) {
@@ -804,6 +888,32 @@ export class SyncSession {
     } catch (error) {
       await this.finish(`接收失败：${(error as Error).message}`)
     }
+  }
+
+  private joinParts(parts: Uint8Array[]): Uint8Array {
+    let length = 0
+    for (const part of parts) {
+      length += part.length
+    }
+    const joined = new Uint8Array(length)
+    let offset = 0
+    for (const part of parts) {
+      joined.set(part, offset)
+      offset += part.length
+    }
+    return joined
+  }
+
+  private async acceptManifest(): Promise<void> {
+    let total = 0
+    for (const entry of this.entries) {
+      total += entry.size
+    }
+    await this.sendFn(frame({ t: T_ACCEPT }))
+    this.onProgress({
+      phase: 'receive', filesDone: 0, filesTotal: this.entries.length,
+      bytesDone: 0, bytesTotal: total, detail: '开始接收'
+    })
   }
 
   private totalBytes(): number {

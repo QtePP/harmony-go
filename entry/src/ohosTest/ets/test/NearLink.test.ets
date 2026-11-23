@@ -142,9 +142,16 @@ export default function nearLinkSyncTest() {
       fs.mkdirSync(`${root}/src`, true)
       fs.mkdirSync(`${root}/dst`, true)
       writeText(`${root}/src/note.txt`, 'across the radio\n')
-      // Bigger than one 512-byte packet by two orders of magnitude, so the
-      // chunking path (and the negotiated payload cap) is exercised too.
+      // Bigger than one packet by two orders of magnitude, so the chunking path
+      // (and the negotiated payload cap) is exercised too.
       writeZeros(`${root}/src/big.bin`, 40000)
+      // Enough entries that the manifest itself exceeds one 星闪 packet: the
+      // control frames have to be split or the hello write is refused.
+      const many = `${root}/src/many`
+      fs.mkdirSync(many, true)
+      for (let index = 0; index < 120; index++) {
+        writeText(`${many}/file-${index}.txt`, `row ${index}\n`)
+      }
 
       if (options.role === 'scan') {
         const peers: NearLinkPeer[] = await scanNearLinkPeers(6000)
@@ -184,7 +191,7 @@ export default function nearLinkSyncTest() {
         }
         const report = await finished
         await receiver.close()
-        expect(report === null ? -1 : (report as SyncReport).files).assertEqual(2)
+        expect(report === null ? -1 : (report as SyncReport).files).assertEqual(122)
         expect(fs.statSync(`${root}/dst/note.txt`).size).assertEqual(17)
         expect(fs.statSync(`${root}/dst/big.bin`).size).assertEqual(40000)
         removeTree(root)
@@ -284,7 +291,7 @@ export default function nearLinkSyncTest() {
       }
       await wait(500)
       diag(diagPath, `sent files=${sent === null ? -1 : (sent as SyncReport).files}`)
-      expect(sent === null ? -1 : (sent as SyncReport).files).assertEqual(2)
+      expect(sent === null ? -1 : (sent as SyncReport).files).assertEqual(122)
       removeTree(root)
     })
   })

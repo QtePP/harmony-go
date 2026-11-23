@@ -201,6 +201,12 @@ export class NearLinkSyncLink implements SyncLink {
     return true
   }
 
+  splitControl(): boolean {
+    // A workspace manifest for a few hundred files is several KB; the port
+    // refuses frames bigger than its packet size, so control frames are split.
+    return true
+  }
+
   maxPayload(): number {
     const negotiated = this.negotiatedMtu > 0 ? this.negotiatedMtu : this.mtu
     return Math.max(256, Math.min(negotiated, SYNC_NEARLINK_CHUNK_BYTES))
