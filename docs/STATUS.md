@@ -69,6 +69,19 @@
   `manager.getPairedDevices()` 的地址）再验字节通道。为此新增的测试用例默认无 `role` 参数时直接通过，
   不拖累 `bash scripts/test.sh device`。
 
+- **克隆仓库里的文件点不开：「它不在当前项目的可访问目录内」（2026-11-23 17:10–17:25，手机 CMM-AL10）**。
+  现象（用户报）：消息里的 `docs/STATUS.md` 引用、以及「产物」卡片，点了打不开，提示找不到；
+  文件当时就在设备上（`hdc find` 实查：`files/workspace/repos/qtepp-harmony-go/docs/STATUS.md` 与
+  `files/workspaces/0651af59…/repos/qtepp-harmony-go/docs/STATUS.md` 都在）。
+  根因：`Index.candidatePaths()` 只把「引用」拼到各个**项目工作区根**上（`<root>/docs/STATUS.md`），
+  而模型说的是**仓库相对路径**——文件实际在 `<root>/repos/<slug>/docs/STATUS.md`。中间那层 `repos/<slug>/`
+  没人补，所以**克隆下来的仓库里任何文件都解析不到**。
+  修法：`candidatePaths()` 在每个根上再展开一层 `repos/*/<relative>`（`repoCandidates()`，只列 `repos/` 下的目录，
+  不做递归搜索——这是 git 工具自己的固定布局，确定且便宜）。
+  真机验证：手机「Coding」项目的 git 会话里，「产物 · 2」两张卡从「目录未挂载」变成「点击预览」，
+  点 `STATUS.md` 直接打开文内预览，内容就是 `docs/STATUS.md` 的正文（`# STATUS.md — 真机验收与状态日志`）；
+  消息里的 `docs/STATUS.md` 引用同理。
+
 - **输入框不再有内嵌控件：语音挪到左边、图片挪到环与发送之间（2026-11-23 17:05–17:15，手机 CMM-AL10 + 平板 MLR-AL00）**。
   用户要的顺序是「语音在输入框左边；图片在输入框外面、上下文环右边、发送左边」。现在一行是
   `[🎤] [输入框] [上下文环] [🖼] [发送]`（输入法=左边，发送前动作=右边，上下文环留在两个动作之间）。

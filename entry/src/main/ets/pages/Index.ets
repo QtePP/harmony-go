@@ -2392,6 +2392,39 @@ struct Index {
       }
       seen.add(root)
       out.push(`${root}/${relative}`)
+      // A reference from inside a clone is repo-relative (`docs/STATUS.md`)
+      // while the file lives at `repos/<slug>/docs/STATUS.md`. The git tool
+      // owns that one level of layout, so expanding it is deterministic — and
+      // without it every reference into a cloned repo looked like a missing
+      // file (「它不在当前项目的可访问目录内」for a file that was right there).
+      for (const candidate of this.repoCandidates(root, relative)) {
+        out.push(candidate)
+      }
+    }
+    return out
+  }
+
+  /** `<root>/repos/<slug>/<relative>` for every cloned repo under this root. */
+  private repoCandidates(root: string, relative: string): string[] {
+    const out: string[] = []
+    const repos = `${root}/repos`
+    let names: string[] = []
+    try {
+      names = fs.listFileSync(repos)
+    } catch (error) {
+      // No repos/ under this root: nothing to expand.
+      return out
+    }
+    for (const name of names) {
+      const dir = `${repos}/${name}`
+      try {
+        if (!fs.statSync(dir).isDirectory()) {
+          continue
+        }
+      } catch (error) {
+        continue
+      }
+      out.push(`${dir}/${relative}`)
     }
     return out
   }
