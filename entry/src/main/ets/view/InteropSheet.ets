@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit'
+import { SyncSheet } from './SyncSheet'
 import { ChannelStatus, ChannelKind, ClipboardChannel, InteropEnvelope, LanChannel, ProbeResult,
   WebSocketChannel, INTEROP_PORT, localLanAddress, localPeerName, makeEnvelope, probeChannels,
   probeNearLink, probeDataShare } from '../common/Interop'
@@ -26,6 +27,8 @@ export struct InteropSheet {
   @State nearLinkResult: ProbeResult | null = null
   @State dataShareResult: ProbeResult | null = null
   @State probing: string = ''
+  /** Project sync sheet visibility; files go over their own protocol. */
+  @State showSync: boolean = false
   private lan: LanChannel | null = null
   private ws: WebSocketChannel | null = null
   private me: string = localPeerName()
@@ -396,9 +399,47 @@ export struct InteropSheet {
         .fontSize(10)
         .fontColor($r('app.color.text_tertiary'))
         .width('100%')
+
+      // -- 项目同步：文件走自己的协议（分帧 + 分片 + staging），不是上面这条文本通道 --
+      Column({ space: 6 }) {
+        Text('项目同步').fontSize(12).fontColor($r('app.color.text_secondary'))
+        Text('把一个项目的文件（整个工作区或手动勾选）发给另一台装了本应用的设备；对方打开「接收」后显示配对码。')
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .width('100%')
+        Button('打开项目同步…')
+          .fontSize(13)
+          .height(36)
+          .width('100%')
+          .backgroundColor($r('app.color.surface'))
+          .fontColor($r('app.color.text_primary'))
+          .onClick(() => {
+            this.showSync = true
+          })
+      }
+      .width('100%')
+      .padding(10)
+      .backgroundColor($r('app.color.surface_muted'))
+      .borderRadius(10)
     }
     .width('100%')
     .padding(16)
     .alignItems(HorizontalAlign.Start)
+    .bindSheet($$this.showSync, this.syncSheet(), {
+      height: '88%',
+      dragBar: true,
+      onDisappear: () => {
+        this.showSync = false
+      }
+    })
+  }
+
+  @Builder
+  syncSheet() {
+    SyncSheet({
+      onClose: () => {
+        this.showSync = false
+      }
+    })
   }
 }
