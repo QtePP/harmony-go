@@ -2354,11 +2354,11 @@ struct Index {
     this.pluginRows = PluginCatalog.rows(PluginConfig.disabled)
   }
 
-  private async saveSettings(key: string, model: string): Promise<void> {
+  private async saveSettings(key: string, model: string, gitToken: string): Promise<void> {
     if (this.context === null) {
       return
     }
-    await AppConfig.save(this.context, key, model)
+    await AppConfig.save(this.context, key, model, gitToken)
     // ACP/ohos runs the credentials-live plugin: the staged key hot-publishes
     // within ~2s. SDK keeps the boot-frozen env; only a restart picks it up.
     this.getUIContext().getPromptAction().showToast({
@@ -2469,6 +2469,7 @@ struct Index {
     SettingsSheet({
       usageSummary: this.usageSummary,
       initialKey: AppConfig.apiKey,
+      initialGitToken: AppConfig.gitToken,
       initialModel: AppConfig.model,
       initialProfile: AppConfig.profile,
       initialPermission: AppConfig.permissionMode,
@@ -2477,8 +2478,8 @@ struct Index {
       initialFontLevel: AppConfig.fontLevelId,
       diagnostics: this.diagnostics,
       pluginRows: this.pluginRows,
-      onSave: (key: string, model: string) => {
-        void this.saveSettings(key, model)
+      onSave: (key: string, model: string, gitToken: string) => {
+        void this.saveSettings(key, model, gitToken)
       },
       onProfileChange: (profile: string, permissionMode: string) => {
         void this.saveProfileChoice(profile, permissionMode)
@@ -2985,7 +2986,12 @@ struct Index {
       }
     })
     .bindSheet($$this.showSettings, this.settingsSheet(), {
-      height: SheetSize.LARGE,
+      // LARGE renders as roughly half the window on this tablet, which is not
+      // enough for the settings list — the save row ended up past the bottom
+      // edge and the sheet refused to scroll, so it could not be reached at
+      // all. 92% leaves the drag bar and the sheet's own padding intact while
+      // giving the content room.
+      height: '92%',
       dragBar: true,
       onDisappear: () => {
         this.showSettings = false

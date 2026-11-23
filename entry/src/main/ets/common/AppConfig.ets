@@ -40,6 +40,13 @@ export class AppConfig {
   }
 
   static apiKey: string = ''
+  /**
+   * GitHub token for `git push`. Kept apart from the API key and staged as its
+   * own file (`dsh-home/.git-token`) because only the git tool reads it, and
+   * because a token that can write to a repository is a different risk class
+   * from a model key.
+   */
+  static gitToken: string = ''
   static model: string = AppConfig.MODEL
   /** Accent theme id; the colour itself lives in AppStorage for the views. */
   static accentId: string = 'blue'
@@ -65,6 +72,7 @@ export class AppConfig {
   static async load(context: common.UIAbilityContext): Promise<void> {
     AppConfig.store = await preferences.getPreferences(context, AppConfig.STORE)
     const saved = await AppConfig.store.get('api_key', '') as string
+    const token = await AppConfig.store.get('git_token', '') as string
     const model = await AppConfig.store.get('model', AppConfig.MODEL) as string
     const profile = await AppConfig.store.get('profile', AppConfig.PROFILE_SDK) as string
     const prompted = await AppConfig.store.get('profile_prompted', false) as boolean
@@ -82,18 +90,58 @@ export class AppConfig {
     AppStorage.setOrCreate(FONT_SCALE_KEY, fontScaleOf(AppConfig.fontLevelId))
     AppConfig.appearance = AppConfig.normalizeAppearance(appearance)
     AppConfig.apiKey = saved.length > 0 ? saved : AppConfig.readBundledKey(context)
+    AppConfig.gitToken = token
   }
 
-  static async save(context: common.UIAbilityContext, key: string, model: string): Promise<void> {
+  /**
+   * `gitToken` is optional so every existing caller keeps working; pass it to
+   * set or clear the GitHub token that `push` reads.
+   */
+  static async save(context: common.UIAbilityContext, key: string, model: string, gitToken?: string): Promise<void> {
     AppConfig.apiKey = key.trim()
+    if (gitToken !== undefined) {
+      AppConfig.gitToken = gitToken.trim()
+    }
     AppConfig.model = model.trim().length === 0 ? AppConfig.MODEL : model.trim()
     if (AppConfig.store === null) {
       AppConfig.store = await preferences.getPreferences(context, AppConfig.STORE)
     }
     await AppConfig.store.put('api_key', AppConfig.apiKey)
+    await AppConfig.store.put('git_token', AppConfig.gitToken)
     await AppConfig.store.put('model', AppConfig.model)
     await AppConfig.store.flush()
     AppConfig.stageApiKey(context)
+    AppConfig.stageGitToken(context)
+  }
+
+  /**
+   * Mirror the token into `<filesDir>/dsh-home/.git-token`, the only path
+   * `push` reads. Never an env var: node-bridge dumps the child environment
+   * into node.log, so a token there would be readable from the shell.
+   * bootstrap.cjs tightens the file to 0600 on the next boot, same as the API
+   * key — ArkTS has no chmod.
+   */
+  private static stageGitToken(context: common.UIAbilityContext): void {
+    const home = `${context.filesDir}/dsh-home`
+    if (!fs.accessSync(home)) {
+      return
+    }
+    const tokenPath = `${home}/.git-token`
+    try {
+      if (AppConfig.gitToken.length === 0) {
+        if (fs.accessSync(tokenPath)) {
+          fs.unlinkSync(tokenPath)
+        }
+        return
+      }
+      const tmpPath = `${home}/.git-token.tmp`
+      const file = fs.openSync(tmpPath, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC)
+      fs.writeSync(file.fd, AppConfig.gitToken)
+      fs.closeSync(file)
+      fs.renameSync(tmpPath, tokenPath)
+    } catch (error) {
+      // Staging is best-effort; the token also survives in preferences.
+    }
   }
 
   /**

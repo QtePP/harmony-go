@@ -14,6 +14,7 @@ export struct SettingsSheet {
   @StorageLink('accent') accent: string = '#4D6BFE'
 
   @State apiKey: string = ''
+  @State gitToken: string = ''
   @State model: string = ''
   @State profile: string = 'sdk'
   @State permissionMode: string = 'workspace-write'
@@ -23,6 +24,7 @@ export struct SettingsSheet {
   @State showDiagnostics: boolean = false
   @State showLocked: boolean = false
   @Prop initialKey: string = ''
+  @Prop initialGitToken: string = ''
   @Prop initialModel: string = ''
   @Prop initialProfile: string = 'sdk'
   @Prop initialPermission: string = 'workspace-write'
@@ -41,7 +43,7 @@ export struct SettingsSheet {
   @State scannedOnce: boolean = false
   @State adopted: LocalModel | null = null
   @Prop pluginRows: PluginRow[] = []
-  onSave: (key: string, model: string) => void = () => {}
+  onSave: (key: string, model: string, gitToken: string) => void = () => {}
   onProfileChange: (profile: string, permissionMode: string) => void = () => {}
   onRefreshDiagnostics: () => void = () => {}
   onResetPayload: () => void = () => {}
@@ -57,6 +59,7 @@ export struct SettingsSheet {
 
   aboutToAppear(): void {
     this.apiKey = this.initialKey
+    this.gitToken = this.initialGitToken
     this.model = this.initialModel
     this.profile = this.initialProfile === 'acp' ? 'acp' : 'sdk'
     this.permissionMode = AppConfig.normalizePermissionMode(this.initialPermission)
@@ -100,6 +103,12 @@ export struct SettingsSheet {
   }
 
   build() {
+    // One scroll for the whole sheet. The save row used to fall past the bottom
+    // edge once the content grew (the GitHub token field did it) and the sheet
+    // did not scroll, so "保存" was unreachable. The fix is the sheet height in
+    // Index.ets (`height: '92%'` instead of SheetSize.LARGE), not a second
+    // scroll container: splitting it into scroll + pinned footer squeezed the
+    // scroll area to ~190px and made it worse.
     Scroll() {
       Column({ space: 14 }) {
         Text('设置')
@@ -117,6 +126,22 @@ export struct SettingsSheet {
               this.apiKey = value
             })
           Text('仅保存在本机应用沙箱内').fontSize(11).fontColor($r('app.color.text_tertiary'))
+        }
+        .alignItems(HorizontalAlign.Start)
+        .width('100%')
+
+        Column({ space: 6 }) {
+          Text('GitHub Token（用于 git push）').fontSize(12).fontColor($r('app.color.text_secondary'))
+          TextInput({ text: this.gitToken, placeholder: 'ghp_...（留空则不能 push）' })
+            .type(InputType.Password)
+            .fontSize(14)
+            .height(44)
+            .onChange((value: string) => {
+              this.gitToken = value
+            })
+          Text('写入 dsh-home/.git-token；只给 git 工具读。不进环境变量——bridge 会把环境变量 dump 进 node.log。')
+            .fontSize(11)
+            .fontColor($r('app.color.text_tertiary'))
         }
         .alignItems(HorizontalAlign.Start)
         .width('100%')
@@ -501,7 +526,7 @@ export struct SettingsSheet {
             // system blue was the one control that ignored the theme.
             .backgroundColor(this.accent)
             .fontColor(Color.White)
-            .onClick(() => this.onSave(this.apiKey, this.model))
+            .onClick(() => this.onSave(this.apiKey, this.model, this.gitToken))
           Button('诊断')
             .layoutWeight(1)
             .backgroundColor($r('app.color.surface_muted'))

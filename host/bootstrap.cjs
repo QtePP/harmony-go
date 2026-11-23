@@ -113,7 +113,13 @@ function keyFilePath() {
 function tightenKeyFile() {
   const home = process.env.DSH_HOME || ''
   const candidates = [keyFilePath()]
-  if (home) candidates.push(path.join(home, '.credentials.yaml'))
+  if (home) {
+    candidates.push(path.join(home, '.credentials.yaml'))
+    // GitHub token for the git tool's push. Same reasoning as the API key:
+    // ArkTS cannot chmod, so the first write leaves the default mode and this
+    // is the only place that can close it.
+    candidates.push(path.join(home, '.git-token'))
+  }
   for (const file of candidates) {
     if (!file) continue
     try {
