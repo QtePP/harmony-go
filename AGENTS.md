@@ -169,12 +169,15 @@ ACP 实测契约（勿凭直觉改）：
   三个数字并存不是笔误；`scripts/*.sh` 没有钉 PATH，用的是调用者环境里的 node。
 - dsh **0.2.2-rc.5**（钉在 `scripts/assemble-payload.mjs` 的 `PINNED_DSH_VERSION`，**默认不再解析 `latest`**）；载荷 zip ≈**240MB**（剪掉 332MB 外国平台包后）；HAP ≈352MB（unsigned）；桥端口 4517。
 - `hdc` 不在 PATH：`/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc`。
-- **设备身份**：当前在用的是**平板** —— `const.product.name` = **HUAWEI MatePad Mini 悦读版**、
-  `const.product.model` = **MLR-AL00**、`const.product.devicetype` = **tablet**、API 26、2560×1600。
-  本文件个别旧记录把它写成「手机」，是笔误（当时没跑 `param get const.product.devicetype`）；
-  **凡是「手机」与这台设备同时出现的地方，以本条为准**。含义：它走 ≥840vp 的双栏布局，
-  单栏（手机）形态不在它身上验。另：`wm size` 在该设备 shell 里不可用（`inaccessible or not found`），
-  分辨率从 `param`/`hidumper` 取。
+- **设备身份（两台，按型号区分，别混）**：
+  · **平板** HUAWEI MatePad Mini 悦读版 —— `model` = **MLR-AL00**、`devicetype` = **tablet**、
+    API 26、2560×1600，走 ≥840vp **双栏**；本文件绝大多数历史验收在它身上。`wm size` 在它
+    shell 里不可用（`inaccessible or not found`），分辨率从 `param`/`hidumper` 取。
+  · **手机** HUAWEI Mate 90 Pro Max 典藏版 —— `model` = **CMM-AL10**、`devicetype` = **phone**、
+    HarmonyOS 7.0.0.111、1320×2848，走 <840vp **单栏**（2026-11-23 起用它验单栏形态、
+    分享面板与设置面板）。
+  **单栏只在手机上验过、双栏只在平板上验过**；旧记录里把平板写成「手机」的是笔误
+  （当时没跑 `param get const.product.devicetype`），以本条为准。
 - **序列号不进本仓库**（§8.5）：需要用序列号定位设备时记在本地记忆或命令行现场查
   （`hdc list targets`），本文件只按「型号 + 形态」识别设备。
 - 设备侧文件路径两种视角同目录：hdc shell `/data/app/el2/100/base/<bundle>/haps/entry/files/…`
@@ -194,10 +197,10 @@ ACP 实测契约（勿凭直觉改）：
 | 双 profile | SDK 5 方法（兼容路径）/ ACP 9 方法（首启引导推荐）；首启问一次，答案决定当次启动 |
 | 对话体验 | 流式气泡 + 思考折叠 + 工具轨迹、插话队列、待办条 / 目标条、上下文小环、重新回答、完成摘要 |
 | 会话管理 | 列表 / 标题与内容搜索、置顶、归档、多选批量归档、未读标记、每轮用量账本、详情页、导出 |
-| 文件与产物 | 预览（网页 / 图片 / 文本）、`@` 引用、图片存相册、分享卡、导出 Markdown |
+| 文件与产物 | 预览（网页 / 图片 / 文本）、`@` 引用、图片存相册、分享卡、导出 Markdown；**长按文件 → 分享到其他应用**（系统 ShareKit，类型先查 UTD、查不到落静态表） |
 | 输入与外观 | 语音输入 / 朗读（引擎缺离线语音包，降级已验证）、六套主题色、外观三档、对话字号四档 |
 | 沙箱与审批 | 四层沙箱 + 权限三档（只读 / 平衡 / 宽松），三档均真机闭环 |
-| 联网与仓库 | `web_search` 走服务端 Messages 搜索；`git` 纯 JS clone/snapshot/pull/log/diff/status（父链自解析、`force` 重置、传输中途限流），真机端到端走过超时重试 |
+| 联网与仓库 | `web_search` 走服务端 Messages 搜索；`git` 纯 JS clone/snapshot/pull/log/diff/status/**commit**/**push**（父链自解析、`force` 重置、传输中途限流、跟随设备系统代理），真机端到端走过超时重试；`push` 的 token 在设置页填，写 `dsh-home/.git-token`（0600，不进 env） |
 | 稳定性 | 断线重连 120s 退避实测夺回客户端槽位；崩溃即终态（`node::Start` 每进程一次） |
 
 ### 7.2 没成 / 卡在平台上的

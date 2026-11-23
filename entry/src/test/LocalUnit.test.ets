@@ -9,6 +9,7 @@ import { refsFromText } from '../main/ets/view/ChatView';
 import { decodeEnvelope, encodeEnvelope, keepRemainder, makeEnvelope, takeLines } from '../main/ets/common/Interop';
 import { compactCount, dayKey, mergeUsage, usageTotal, UsageDay } from '../main/ets/model/Usage';
 import { spokenForm } from '../main/ets/common/ReadAloud';
+import { extOf, fallbackUtd, nameOf } from '../main/ets/common/FileShare';
 
 /**
  * Tests for the pure projections and formatters.
@@ -149,6 +150,52 @@ export default function localUnitTest() {
       expect(compactCount(999)).assertEqual('999');
       expect(compactCount(1200)).assertEqual('1.2k');
       expect(compactCount(2500000)).assertEqual('2.5M');
+    });
+  });
+
+  describe('FileShare', () => {
+    it('reads the extension of a plain name', 0, () => {
+      expect(extOf('index.html')).assertEqual('html');
+    });
+
+    it('lowercases the extension', 0, () => {
+      expect(extOf('/a/b/REPORT.PDF')).assertEqual('pdf');
+    });
+
+    it('ignores dots in directory names', 0, () => {
+      // The last dot after the last slash is the only candidate; a folder
+      // called "v1.2" must not make its children look extension-less.
+      expect(extOf('/work/v1.2/notes')).assertEqual('');
+      expect(extOf('/work/v1.2/notes.md')).assertEqual('md');
+    });
+
+    it('treats a trailing dot as no extension', 0, () => {
+      expect(extOf('weird.')).assertEqual('');
+    });
+
+    it('returns empty for a bare filename', 0, () => {
+      expect(extOf('README')).assertEqual('');
+    });
+
+    // The fallback table runs only when the platform query fails; its job is
+    // to keep the common artifacts shareable, not to be exhaustive.
+    it('maps the extensions this app produces', 0, () => {
+      expect(fallbackUtd('png')).assertEqual('general.png');
+      expect(fallbackUtd('jpeg')).assertEqual('general.jpeg');
+      expect(fallbackUtd('pdf')).assertEqual('com.adobe.pdf');
+      expect(fallbackUtd('md')).assertEqual('general.markdown');
+      expect(fallbackUtd('html')).assertEqual('general.html');
+      expect(fallbackUtd('txt')).assertEqual('general.plain-text');
+    });
+
+    it('falls back to general.file for anything unknown', 0, () => {
+      expect(fallbackUtd('xyz')).assertEqual('general.file');
+      expect(fallbackUtd('')).assertEqual('general.file');
+    });
+
+    it('names a file from its path', 0, () => {
+      expect(nameOf('/a/b/c.html')).assertEqual('c.html');
+      expect(nameOf('c.html')).assertEqual('c.html');
     });
   });
 

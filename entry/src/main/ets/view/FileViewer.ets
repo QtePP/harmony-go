@@ -4,6 +4,7 @@ import { webview } from '@kit.ArkWeb'
 import { fileIo as fs } from '@kit.CoreFileKit'
 import { MdText } from './Markdown'
 import { saveToGallery } from '../common/Gallery'
+import { shareFile } from '../common/FileShare'
 
 /** How a referenced file renders. */
 enum PreviewKind {
@@ -137,6 +138,13 @@ export struct FileViewer {
     this.getUIContext().getPromptAction().showToast({ message: message, duration: 2200 })
   }
 
+  /** Send the open file to another app; the panel is the only feedback. */
+  private async shareOpen(): Promise<void> {
+    const context = getContext(this) as common.UIAbilityContext
+    const message = await shareFile(context, this.filePath)
+    this.getUIContext().getPromptAction().showToast({ message: message, duration: 2200 })
+  }
+
   build() {
     Column() {
       Row() {
@@ -155,6 +163,20 @@ export struct FileViewer {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .margin({ left: 12, right: 12 })
+
+        // Share sits beside the type-specific action rather than behind a menu:
+        // opening a file is already deliberate, so sending it is one tap away.
+        if (this.failed.length === 0) {
+          Button('分享')
+            .fontSize(13)
+            .height(32)
+            .backgroundColor($r('app.color.surface_muted'))
+            .fontColor($r('app.color.text_primary'))
+            .margin({ right: 8 })
+            .onClick(() => {
+              void this.shareOpen()
+            })
+        }
 
         if (this.kind === PreviewKind.IMAGE && this.failed.length === 0) {
           // Security component: the tap itself grants the temporary media

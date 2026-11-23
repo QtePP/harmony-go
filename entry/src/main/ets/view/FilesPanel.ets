@@ -1,4 +1,7 @@
+import { common } from '@kit.AbilityKit'
 import { fileIo as fs } from '@kit.CoreFileKit'
+import { pasteboard } from '@kit.BasicServicesKit'
+import { shareFile } from '../common/FileShare'
 
 /** One visible row of the flattened workspace tree. */
 interface FileRow {
@@ -71,7 +74,9 @@ function listChildren(dir: string): FileRow[] {
 /**
  * Project files browser: a tree of the current project's workspace — either
  * its sandbox dir or the user-granted bound directory (both are plain POSIX
- * paths). Dirs expand in place; tapping a file opens the viewer.
+ * paths). Dirs expand in place; tapping a file opens the viewer, and
+ * long-pressing one offers the things a file needs next: send it to another
+ * app, show where it lives, or delete it.
  */
 @Component
 export struct FilesPanel {
@@ -134,6 +139,123 @@ export struct FilesPanel {
       this.expanded.add(row.path)
     }
     this.rescan()
+  }
+
+  /**
+   * Long-press actions for one file.
+   *
+   * Share comes first because it is the reason this menu exists: the file list
+   * is where a produced artifact is easiest to grab, and sending it somewhere
+   * else used to require opening the viewer first. Copy-path and delete are the
+   * two things that otherwise need a desktop.
+   */
+  private openRowActions(row: FileRow): void {
+    if (row.isDir) {
+      this.getUIContext().showActionSheet({
+        title: row.name,
+        message: '文件夹',
+        autoCancel: true,
+        confirm: {
+          value: '取消',
+          action: () => {}
+        },
+        sheets: [
+          {
+            title: row.expanded ? '收起' : '展开',
+            action: () => this.toggle(row)
+          },
+          {
+            title: '复制目录路径',
+            action: () => this.copyPath(row.path)
+          }
+        ]
+      })
+      return
+    }
+    this.getUIContext().showActionSheet({
+      title: row.name,
+      // The sheet requires a message; the size is the only thing worth saying
+      // about a file before the actions, and '' is honest when it is unknown.
+      message: row.sizeLabel.length > 0 ? row.sizeLabel : '文件',
+      autoCancel: true,
+      confirm: {
+        value: '取消',
+        action: () => {}
+      },
+      sheets: [
+        {
+          title: '分享到其他应用',
+          action: () => {
+            void this.share(row)
+          }
+        },
+        {
+          title: '打开',
+          action: () => this.onOpenFile(row.path, row.name)
+        },
+        {
+          title: '复制文件路径',
+          action: () => this.copyPath(row.path)
+        },
+        {
+          title: '删除',
+          action: () => this.confirmDelete(row)
+        }
+      ]
+    })
+  }
+
+  private async share(row: FileRow): Promise<void> {
+    const context = getContext(this) as common.UIAbilityContext
+    const message = await shareFile(context, row.path)
+    this.getUIContext().getPromptAction().showToast({ message: message, duration: 2200 })
+  }
+
+  private copyPath(path: string): void {
+    try {
+      const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, path)
+      pasteboard.getSystemPasteboard().setDataSync(data)
+      this.getUIContext().getPromptAction().showToast({ message: '路径已复制', duration: 1600 })
+    } catch (error) {
+      this.getUIContext().getPromptAction().showToast({ message: '复制失败', duration: 1600 })
+    }
+  }
+
+  /**
+   * Deleting is irreversible and the file may be the only copy of something
+   * the model wrote, so it asks first and names the file in the question.
+   */
+  private confirmDelete(row: FileRow): void {
+    this.getUIContext().showAlertDialog({
+      title: '删除文件',
+      message: `确定删除「${row.name}」？这个操作无法撤销，dsh 之后也读不到它了。`,
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      primaryButton: {
+        value: '取消',
+        action: () => {}
+      },
+      secondaryButton: {
+        value: '删除',
+        fontColor: '#D9534F',
+        action: () => this.deleteFile(row)
+      }
+    })
+  }
+
+  private deleteFile(row: FileRow): void {
+    try {
+      fs.unlinkSync(row.path)
+      const message = `已删除：${row.name}`
+      this.rescan()
+      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1800 })
+    } catch (error) {
+      const failure = error as Error
+      this.getUIContext().getPromptAction().showToast({
+        message: `删除失败：${failure.message}`,
+        duration: 2200
+      })
+    }
   }
 
   build() {
@@ -228,6 +350,7 @@ export struct FilesPanel {
                   this.onOpenFile(row.path, row.name)
                 }
               })
+              .gesture(LongPressGesture().onAction(() => this.openRowActions(row)))
             }
           }, (row: FileRow) => `${row.path}.${row.expanded}`)
         }

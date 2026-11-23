@@ -12,6 +12,30 @@
 
 ---
 
+- **长按文件就能分享；设置面板在手机上重新够得到（2026-11-23 09:15，Mate 90 Pro Max）**。
+  换到**手机**形态：`const.product.name` = HUAWEI Mate 90 Pro Max 典藏版、`model` = CMM-AL10、
+  `devicetype` = phone、HarmonyOS 7.0.0.111、1320×2848 —— 本仓**第一次在 <840vp 单栏**上验
+  （之前只有 MatePad Mini 平板）。新设备不在旧调试 profile 的 UDID 里 ⇒ 先
+  `devecocli signature generate --force`（CLI 自己打印 ACL 申请 `FILE_ACCESS_PERSIST`），装完
+  `git checkout build-profile.json5` 还原开源口径；载荷在旧沙箱里已存在，首启没有重新解包。
+  **分享（本次改动）**：打开「项目文件」→ **长按** `weekly-training-plan.html`（22.2 KB）→ 弹
+  `分享到其他应用 / 打开 / 复制文件路径 / 删除`；点分享 → 系统面板标题「分享」，卡片是
+  **文件名 + HTML 类型图标 + 22.76 KB**，目标有 华为分享 / WeLink / 微信 / QQ / QQ邮箱 / 备忘录 /
+  打印 / 另存为 / 复制 / 小艺帮记 / 添加至中转站。**两个 KB 不是两份文件**：设备侧 `ls -l`
+  `/data/app/el2/100/base/com.qtepp.taharness/haps/entry/files/workspaces/4f1e78ea-…/` 给的真实大小是
+  **22757 B**，我们的列表标签按 1024 进制一位小数显示 22.2 KB，系统面板按 1000 进制两位小数显示
+  22.76 KB。预览页右上角的「分享」走同一个 `shareFile()`（平板上一轮已验过同一路径）。
+  **设置面板（0bb8f02）**：`SheetSize.LARGE` 在这台手机上只有约半屏，加了 GitHub Token 字段后
+  `保存` 落到屏外且面板不滚——`height: '92%'` 之后 `Scroll` 占满 `[0,348,1320,2848]`，滚到底
+  `保存`/`诊断` 在 y=1181–1316 可见可点，Token 字段与「写入 dsh-home/.git-token」说明都在首屏。
+  **四个坑**：(1) `devecocli ui longclick`（约 500ms 按压）在这台手机上**不触发**
+  `LongPressGesture`，`hdc shell uitest uiInput longClick x y` 才触发——手机上写 UI 自动化直接用
+  uitest；(2) `uinput -K -d 2 -u 2` 在这套系统上是 **BACK**，用来收键盘不会把 App 踢到后台
+  （平板上同一个键是 HOME，别照抄）；(3) 顶部常驻通知横幅会盖住 header，测试中途另一个 App
+  （「手表离线地图」）抢了前台，用 `aa start -a EntryAbility -b com.qtepp.taharness` 拉回来；
+  (4) 面板的**类型**决定它给哪些目标：`uniformTypeDescriptor.getUniformDataTypeByFilenameExtension()`
+  查平台，查空或抛错才落静态表——类型报粗了，本该能收的 App 会被面板筛掉。
+
 - **`git` 走设备自己的系统代理（2026-11-20 16:20，MatePad Mini）**。起因是用户问「我的手机没翻墙
   你咋拉代码」——我先取证再回答，结论与我原来的假设相反：**平板是直连的，没走我的 Mac**。
   证据：平板 `wlan0` = `10.93.118.222`，我的 Mac `en0` = `7.246.173.82`；平板 **0 个** `tun/utun/ppp`

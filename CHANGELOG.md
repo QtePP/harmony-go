@@ -7,6 +7,23 @@
 
 ### 新增
 
+- **产出的文件可以直接分享给别的 App（长按文件 / 预览页「分享」）**：模型写的文件以前只有两条出口——预览页把它
+  当内容看、消息分享卡把它当截图看，想把 `weekly-training-plan.html` 发给微信得先打开再截图。现在
+  **项目文件面板长按**任意文件弹 `分享到其他应用 / 打开 / 复制文件路径 / 删除`（目录则是 `展开·收起 / 复制目录路径`），
+  **预览页右上角**多了「分享」。类型走 `uniformTypeDescriptor.getUniformDataTypeByFilenameExtension()` 查平台 UTD，
+  查空或抛错才落静态表（png/jpeg/pdf/md/html/txt，其余 `general.file`）——类型报错面板会筛掉本该能收的 App
+  （PNG 报成 `general.file` 就没有图库目标）。URI **必须**来自 `fileUri.getUriFromPath()`：手拼 `file://` 能构造成功，
+  但 `show()` 会以 `IPC data is oversized` 拒绝。沙箱外的文件（用户授权的绑定目录）先复制进 `cacheDir` 再分享——
+  那份授权属于本应用且会失效，直接递 URI 会变成「分享成功、对方打不开」。
+  真机（手机 CMM-AL10，1320×2848）：面板显示正确的文件名、HTML 类型图标、大小，目标是
+  华为分享 / WeLink / 微信 / QQ / QQ邮箱 / 备忘录 / 打印 / 另存为 / 复制 / 小艺帮记 / 添加至中转站。
+  LocalUnit 47 → **55**（`FileShare` 8 条：扩展名解析、点号在目录名里、尾点、静态类型表、`nameOf`）。
+
+- **设置页可以填 GitHub Token（`git push` 的凭据入口）**：`push` 早就实现了，但设备上没有 shell，token 无处可放。
+  设置页新增 GitHub Token 字段（密码框），存 preferences 并**镜像到 `dsh-home/.git-token`**——`push` 唯一读的路径；
+  **不进 env**（`node-bridge` 把子进程环境 dump 进 `node.log`），`bootstrap.cjs` 下次启动把它收到 **0600**
+  （ArkTS 没有 chmod）。写入走临时文件 + rename，避免半截 token 被 `push` 读到。
+
 - **`git` 的 `force` 与 `HEAD~1` 已真机验成（失败路径优先）**：`snapshot`（2.0 MB / 8.7s）→
   `clone` 一个不存在的仓库 `force=true`（传输失败）→ `status` 仍报 `clean (164 paths)`（快照没被动）→
   `clone force=true`（4.4 MB / 13.0s）→ `diff` 不传 `base`/`head` 得到 `4 paths changed in
@@ -93,6 +110,12 @@
   两条都不写数据、不改设置。**`ACCESS_NEARLINK` 是 user_grant/normal**，所以这条通道对三方应用是开着的。
 
 ### 修复
+
+- **设置面板的「保存」在手机上落到屏外、而且面板不滚**：加了 GitHub Token 字段后内容超过面板高度，`保存`
+  不只是「不好找」，是**够不到**。`SheetSize.LARGE` 在这台手机上只有约半屏；改成 `height: '92%'` 后
+  单层 `Scroll` 占满面板，滚到底 `保存`/`诊断` 就在眼前。中间试过「滚动区 + 固定底栏」，结果滚动区被挤到
+  约 190px、更难用，已回退——文件里的注释写明了这条路走不通，免得下一个人再试。
+  真机（手机 CMM-AL10，1320×2848）：`Scroll` 占满 `[0,348,1320,2848]`，滚到底 `保存` 在 y=1181–1316。
 
 - **Markdown 里的链接点了没反应**：渲染器给 `span.link` 加了样式，却**没有挂任何点击处理**；
   而 ArkUI 的 `Span` 既没有 `onClick`，也没有 span 级命中测——点击事件只会落在整段 `Text` 上。
