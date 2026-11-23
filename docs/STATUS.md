@@ -104,6 +104,21 @@
   第二条用错码，断言发送端抛错、接收端报「配对码不对」、目标目录零文件。本轮实测 **3 个用例全过**。
   星闪**字节通道尚未双机跑通**（需要两台设备同时开收发，见 `docs/PROJECT-SYNC.md` §6），只验到端口/广告/扫描这条腿。
 
+- **语音输入原来是「引擎空转」：补上 AudioCapturer 才真的出字（2026-11-23 16:45，手机 CMM-AL10 + 平板 MLR-AL00）**。
+  用户报「语音识别输入还是不支持」。查下来不是权限、不是引擎：`MICROPHONE` 已授予、`createEngine` 成功、
+  `startListening` 返回 success、离线模型（`encoder_chn.ms`/`decjoint_chn.ms`）也在加载，
+  但整段话**一条 `onResult` 都没有**。
+  根因：**CoreSpeechKit 的识别引擎自己不录音**——`startListening` 只是准备一个会话，音频必须由应用用
+  `AudioCapturer` 采 16 kHz 单声道 PCM，再按 **640 / 1280 字节**切片调 `writeAudio` 喂进去。
+  我们之前只调了 `startListening`，引擎一直饿着，所以"启动成功但永远识别不出字"。
+  修法（`common/Speech.ets`）：`startListening` 之后创建 `AudioCapturer`
+  （`SAMPLE_FORMAT_S16LE` / `CHANNEL_1` / `16000` / `ENCODING_TYPE_RAW` / `SOURCE_TYPE_MIC`），
+  `on('readData')` 里攒数据按 1280 字节切片 `writeAudio`，结束前把余量补零成 1280 一并发出去；
+  `stop()`/`release()` 统一停录并释放录音器。
+  真机验证方式：Mac 用 `say -v` 生成中文语音并 `afplay` 播放，手机点麦克风 → 输入框出现
+  **「。今天天气不错。」**，日志同时出现 `Infer runModel [Decjoint]` 与 `VadInferEvad`（VAD 在跑）。
+  这台设备上之前那条「离线语音引擎验成」只证明了**引擎能启动**，不证明识别出字，本条更正。
+
 > 载荷里的 `payload/docs/` 是构建期快照（`assemble-payload.mjs` 的 `stageDocs()` 拷 `docs/*.md`），
 > 权威副本始终是本文件。
 

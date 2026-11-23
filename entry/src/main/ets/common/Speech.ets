@@ -1,4 +1,5 @@
 import { abilityAccessCtrl, common } from '@kit.AbilityKit'
+import { audio } from '@kit.AudioKit'
 import { speechRecognizer } from '@kit.CoreSpeechKit'
 import { BusinessError } from '@kit.BasicServicesKit'
 
@@ -56,6 +57,14 @@ export async function requestMicPermission(context: common.UIAbilityContext): Pr
 
 export class SpeechInput {
   private engine: speechRecognizer.SpeechRecognitionEngine | null = null
+  private capturer: audio.AudioCapturer | null = null
+  /**
+   * The engine does not open the microphone itself: `startListening` only
+   * prepares a session and every 640- or 1280-byte `writeAudio` is one slice of
+   * the utterance. Without a capturer feeding it, recognition "starts" and then
+   * produces no text at all (the failure mode this class shipped with).
+   */
+  private pcm: Uint8Array = new Uint8Array(0)
   private listening: boolean = false
   /** The id of the utterance in flight; `finish()` requires it back. */
   private sessionId: string = ''
@@ -106,6 +115,7 @@ export class SpeechInput {
             audioInfo: { audioType: 'pcm', sampleRate: 16000, soundChannel: 1, sampleBit: 16 }
           })
           this.listening = true
+          this.openCapture(callbacks)
         } catch (startError) {
           this.release()
           callbacks.onError('无法开始录音')
@@ -118,6 +128,7 @@ export class SpeechInput {
 
   /** Stop early and keep whatever was recognised so far. */
   stop(): void {
+    this.stopCapture()
     if (this.engine === null || !this.listening) {
       return
     }
@@ -129,8 +140,87 @@ export class SpeechInput {
     this.listening = false
   }
 
+  /**
+   * Start PCM capture and stream it into the engine.
+   *
+   * Two hard rules from the API: the audio must be 16 kHz mono PCM S16LE, and
+   * `writeAudio` accepts only 640- or 1280-byte slices, so the capturer's
+   * arbitrary callback size is re-chunked here. A trailing partial slice is
+   * padded with silence so the last word is not dropped.
+   */
+  private async openCapture(callbacks: SpeechCallbacks): Promise<void> {
+    try {
+      const options: audio.AudioCapturerOptions = {
+        streamInfo: {
+          samplingRate: audio.AudioSamplingRate.SAMPLE_RATE_16000,
+          channels: audio.AudioChannel.CHANNEL_1,
+          sampleFormat: audio.AudioSampleFormat.SAMPLE_FORMAT_S16LE,
+          encodingType: audio.AudioEncodingType.ENCODING_TYPE_RAW
+        },
+        capturerInfo: {
+          source: audio.SourceType.SOURCE_TYPE_MIC,
+          capturerFlags: 0
+        }
+      }
+      const capturer = await audio.createAudioCapturer(options)
+      capturer.on('readData', (buffer: ArrayBuffer) => {
+        this.feedPcm(buffer)
+      })
+      await capturer.start()
+      this.capturer = capturer
+    } catch (error) {
+      this.release()
+      callbacks.onError('无法打开麦克风（录音器启动失败）')
+    }
+  }
+
+  /** Append captured bytes and push complete 1280-byte slices to the engine. */
+  private feedPcm(buffer: ArrayBuffer): void {
+    const engine = this.engine
+    if (engine === null || !this.listening) {
+      return
+    }
+    const incoming = new Uint8Array(buffer)
+    const merged = new Uint8Array(this.pcm.length + incoming.length)
+    merged.set(this.pcm, 0)
+    merged.set(incoming, this.pcm.length)
+    let offset = 0
+    const slice = 1280
+    while (merged.length - offset >= slice) {
+      try {
+        engine.writeAudio(this.sessionId, merged.subarray(offset, offset + slice))
+      } catch (error) {
+        this.stopCapture()
+        return
+      }
+      offset += slice
+    }
+    this.pcm = merged.subarray(offset)
+  }
+
+  private stopCapture(): void {
+    // Flush what is left, padded to a legal size, so the tail is not lost.
+    if (this.engine !== null && this.listening && this.pcm.length > 0) {
+      const padded = new Uint8Array(1280)
+      padded.set(this.pcm.subarray(0, Math.min(this.pcm.length, 1280)), 0)
+      try {
+        this.engine.writeAudio(this.sessionId, padded)
+      } catch (error) {
+        // Session may already be closing; the finish below settles it.
+      }
+    }
+    this.pcm = new Uint8Array(0)
+    const capturer = this.capturer
+    this.capturer = null
+    if (capturer !== null) {
+      capturer.stop().catch(() => {})
+      capturer.release().catch(() => {})
+    }
+  }
+
   /** Drop the engine and free the microphone. */
   release(): void {
+    this.stopCapture()
     if (this.engine === null) {
       return
     }
