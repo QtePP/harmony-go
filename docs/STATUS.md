@@ -24,6 +24,24 @@
   **同时纠正一条旧记录**：catalog 里 `deepseek-flash` 才是 DeepSeek-V4.1-Flash，
   `deepseek-v4-flash` 从来不是合法 id；旧文档曾把它当「纯文本」写进补丁注释，已改。
 
+- **星闪与数据代理两条探测从「两红」到「两绿」：三处用法错误（2026-11-23 11:18，手机 CMM-AL10）**。
+  用户贴的设置页截图里两条都是红的：`星闪：不可用 — createPort 失败 401: Invalid parameter`、
+  `数据代理：不可用 — 数据代理不可用 15700011: The URI is not exist.`。逐条查 SDK 后发现三条都属于
+  **我们的调用错**，不是平台不给：
+  ①`dataTransfer.createPort(uuid)` 文档要求 uuid 是 **16 字节、8-4-4-4-12 书写**
+  （例 `FFFFFFFF-FC70-11EA-B720-000078951234`），我们传的是 32 位裸 hex ⇒ **401**；
+  ②`ACCESS_NEARLINK` 是 **user_grant**，没申请就调 ⇒ **201 Permission denied**（改前第二次实测就是 201，
+  说明格式修对之后才走到权限这一层）；探测现在先 `requestPermissionsFromUser(['ohos.permission.ACCESS_NEARLINK'])`
+  再建端口，用户拒绝就报「未授予权限」而不是「不可用」；
+  ③DataShare 共享配置的 URI 是 **`datashareproxy://<bundle>/<path>`**，用 `datashare:///…`（extension 的
+  scheme）去读，必然 **15700011 URI 不存在**；换成正确 scheme 后又撞 **15700014「参数格式不对」**——
+  因为单值记录得用 `get()` 读，`getValues()` 只服务 `isMultiValues: true` 的记录（这个错误码的文案会让你
+  去查 URI，其实是 API 配错）。改成 `publish` 一条 `probe` → `get([uri])` 读回 → `delete` 清理。
+  修完后真机两条都绿：**星闪：可用 — 端口创建成功（可继续做配对与传输）**、
+  **数据代理：可用 — 共享配置可用（发布 + 读回「probe」，已清理）**（截图在应用内该面板）。
+  **教训**：探测类功能报错时，先把「错误码文档里的可能原因」逐条对上我们的调用，再谈平台限制——
+  这两条通道在 `docs/INTEROP-APIS.md` 里原来都写着「视机型 / 需要对方是提供方」，实测都更宽松。
+
 - **语音输入/朗读起不来是参数写错，不是缺语音包——旧结论被真机推翻（2026-11-23 10:50，手机 CMM-AL10）**。
   用户贴的 toast 是「语音引擎启动失败（1002200001）」，旧记录（2026-11-16，平板与手机各一次）把它
   归因为**缺离线中文语音包**。这次**先查 SDK 声明再下结论**：`@hms.ai.speechRecognizer.d.ts` 里

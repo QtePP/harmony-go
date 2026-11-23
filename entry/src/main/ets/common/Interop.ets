@@ -1,3 +1,4 @@
+import { abilityAccessCtrl, common } from '@kit.AbilityKit'
 import { socket } from '@kit.NetworkKit'
 import { pasteboard } from '@kit.BasicServicesKit'
 import { connection } from '@kit.NetworkKit'
@@ -403,31 +404,75 @@ export interface ProbeResult {
 }
 
 /**
+ * Ask for ACCESS_NEARLINK once; `true` when it is granted.
+ *
+ * The system shows nothing when the answer is already yes, so a denied
+ * permission surfaces as false rather than as a dialog on every tap.
+ */
+async function requestNearLinkPermission(context: common.UIAbilityContext): Promise<boolean> {
+  try {
+    const manager = abilityAccessCtrl.createAtManager()
+    const result = await manager.requestPermissionsFromUser(context, ['ohos.permission.ACCESS_NEARLINK'])
+    return result.authResults.length > 0 && result.authResults[0] === 0
+  } catch (error) {
+    return false
+  }
+}
+
+/**
  * Try 星闪 for real: create a port, then tear it down.
  *
  * A port is the cheap half of the API — no pairing, no peer, no scanning. If
  * even that fails, the rest of the chain is moot, and we learn it in one call.
  */
-export async function probeNearLink(): Promise<ProbeResult> {
+export async function probeNearLink(context: common.UIAbilityContext): Promise<ProbeResult> {
   if (!canIUse('SystemCapability.Communication.NearLink.Core')) {
     return { kind: ChannelKind.NEARLINK, ok: false, detail: '本机没有星闪 syscap' }
+  }
+  // ACCESS_NEARLINK is user_grant: until the user answers the dialog, createPort
+  // answers 201 Permission denied. Asking here is what makes the probe report
+  // "user said no" instead of "platform does not have it".
+  const granted = await requestNearLinkPermission(context)
+  if (!granted) {
+    return { kind: ChannelKind.NEARLINK, ok: false, detail: '用户未授予星闪权限（ACCESS_NEARLINK）' }
   }
   try {
     // A fixed UUID identifies our service on the star-flash link; the same
     // string must be used by the peer, so it is a constant, not a random id.
     dataTransfer.createPort(NEARLINK_SERVICE_UUID)
-    dataTransfer.destroyPort(NEARLINK_SERVICE_UUID)
-    return { kind: ChannelKind.NEARLINK, ok: true, detail: '端口创建成功（可继续做配对与传输）' }
   } catch (error) {
     const err = error as Record<string, Object>
     const code = err.code === undefined ? '' : ` ${err.code}`
     const message = err.message === undefined ? '未知错误' : err.message as string
     return { kind: ChannelKind.NEARLINK, ok: false, detail: `createPort 失败${code}：${message}` }
   }
+  // Tearing down is the second half of the probe, but a failure there must not
+  // turn a successful port creation into "unavailable": the channel works, the
+  // cleanup merely did not.
+  let cleanup = ''
+  try {
+    dataTransfer.destroyPort(NEARLINK_SERVICE_UUID)
+  } catch (error) {
+    const err = error as Record<string, Object>
+    cleanup = err.code === undefined ? '（销毁未确认）' : `（销毁 ${err.code}）`
+  }
+  return {
+    kind: ChannelKind.NEARLINK,
+    ok: true,
+    detail: `端口创建成功（可继续做配对与传输）${cleanup}`
+  }
 }
 
-/** Fixed service identity for the 星闪 port channel. */
-export const NEARLINK_SERVICE_UUID: string = '6E6561724C696E6B0000000000453931'
+/**
+ * Fixed service identity for the 星闪 port channel.
+ *
+ * 36-character 8-4-4-4-12 form on purpose: `createPort` documents the custom
+ * uuid as "16 bytes like FFFFFFFF-FC70-11EA-B720-000078951234" and rejects a
+ * bare 32-character hex string with 401 Invalid parameter — which is exactly
+ * what the first version of this probe sent, so it reported the channel as
+ * unavailable while the fault was here.
+ */
+export const NEARLINK_SERVICE_UUID: string = '6E656172-4C69-6E6B-0000-000000453931'
 
 /**
  * Try DataShare for real: open the proxy handle our own bundle publishes to.
@@ -436,20 +481,63 @@ export const NEARLINK_SERVICE_UUID: string = '6E6561724C696E6B0000000000453931'
  * different answer from "denied", and only the call can tell us which.
  */
 export async function probeDataShare(bundleName: string): Promise<ProbeResult> {
+  // Shared configurations live under `datashareproxy://<bundle>/<path>`, not
+  // under `datashare:///...` (that scheme addresses a DataShare extension's
+  // table). The first probe used the wrong scheme and read a URI that could
+  // never exist, so it blamed the platform for its own mistake.
+  const uri = `datashareproxy://${bundleName}/interop-probe`
+  const config: dataShare.DataProxyConfig = { type: dataShare.DataProxyType.SHARED_CONFIG }
+  let handle: dataShare.DataProxyHandle | null = null
   try {
-    const handle = await dataShare.createDataProxyHandle()
-    const uri = `datashare:///${bundleName}/interop`
-    const values = await handle.getValues(uri, { type: dataShare.DataProxyType.SHARED_CONFIG })
-    return {
-      kind: ChannelKind.CLIPBOARD,
-      ok: true,
-      detail: `数据代理可用，读到 ${values.length} 个值`
+    handle = await dataShare.createDataProxyHandle()
+  } catch (error) {
+    const err = error as Record<string, Object>
+    const code = err.code === undefined ? '' : ` ${err.code}`
+    return { kind: ChannelKind.CLIPBOARD, ok: false, detail: `createDataProxyHandle 失败${code}` }
+  }
+  // Publish one short-lived value, read it back, then delete it: the readable
+  // half of the API is only meaningful once the app has published something.
+  // Each stage names itself in the failure text, because 15700014 alone does
+  // not say whether the URI, the value or the array was rejected.
+  try {
+    const published = await handle.publish([{ uri: uri, value: 'probe' }], config)
+    if (published.length === 0 || published[0].result !== dataShare.DataProxyErrorCode.SUCCESS) {
+      const result = published.length === 0 ? '无返回' : `结果 ${published[0].result}`
+      return { kind: ChannelKind.CLIPBOARD, ok: false, detail: `发布共享配置失败（${uri}）：${result}` }
     }
   } catch (error) {
     const err = error as Record<string, Object>
     const code = err.code === undefined ? '' : ` ${err.code}`
     const message = err.message === undefined ? '未知错误' : err.message as string
-    return { kind: ChannelKind.CLIPBOARD, ok: false, detail: `数据代理不可用${code}：${message}` }
+    return { kind: ChannelKind.CLIPBOARD, ok: false, detail: `发布失败${code}（uri=${uri}）：${message}` }
+  }
+  // `getValues` only serves multi-value records; a single-value config is read
+  // back with `get`, which answers per URI. Using the wrong one of the pair
+  // fails as 15700014 "parameter format is incorrect" — a message that sends
+  // you looking at the URI instead of at the call.
+  let readBack = ''
+  try {
+    const results = await handle.get([uri], config)
+    if (results.length === 0 || results[0].result !== dataShare.DataProxyErrorCode.SUCCESS) {
+      const result = results.length === 0 ? '无返回' : `结果 ${results[0].result}`
+      return { kind: ChannelKind.CLIPBOARD, ok: false, detail: `读回失败（${uri}）：${result}` }
+    }
+    readBack = results[0].value === undefined ? '（空值）' : String(results[0].value)
+  } catch (error) {
+    const err = error as Record<string, Object>
+    const code = err.code === undefined ? '' : ` ${err.code}`
+    const message = err.message === undefined ? '未知错误' : err.message as string
+    return { kind: ChannelKind.CLIPBOARD, ok: false, detail: `读回失败${code}（uri=${uri}）：${message}` }
+  }
+  try {
+    await handle.delete([uri], config)
+  } catch (error) {
+    // Leaving one probe entry behind is not worth failing the probe for.
+  }
+  return {
+    kind: ChannelKind.CLIPBOARD,
+    ok: true,
+    detail: `共享配置可用（发布 + 读回「${readBack}」，已清理）`
   }
 }
 

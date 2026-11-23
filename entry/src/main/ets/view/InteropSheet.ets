@@ -1,3 +1,4 @@
+import { common } from '@kit.AbilityKit'
 import { ChannelStatus, ChannelKind, ClipboardChannel, InteropEnvelope, LanChannel, ProbeResult,
   WebSocketChannel, INTEROP_PORT, localLanAddress, localPeerName, makeEnvelope, probeChannels,
   probeNearLink, probeDataShare } from '../common/Interop'
@@ -347,7 +348,7 @@ export struct InteropSheet {
             .enabled(this.probing.length === 0)
             .onClick(() => {
               this.probing = 'nearlink'
-              void probeNearLink().then((result: ProbeResult) => {
+              void probeNearLink(getContext(this) as common.UIAbilityContext).then((result: ProbeResult) => {
                 this.nearLinkResult = result
                 this.probing = ''
               })
@@ -381,7 +382,7 @@ export struct InteropSheet {
             .fontColor((this.dataShareResult as ProbeResult).ok ? '#3FBF74' : $r('app.color.text_tertiary'))
             .width('100%')
         }
-        Text('星闪只建端口不配对；数据代理只读我们自己的共享配置。两条都不写数据、不改设置。')
+        Text('星闪只建端口、随即销毁，不配对；数据代理发布一条「probe」再读回、随即删除，只动我们自己的配置。两条都不碰系统设置。')
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')

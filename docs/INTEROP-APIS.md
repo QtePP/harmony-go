@@ -44,10 +44,10 @@
 | `@ohos.distributedDeviceManager` | 设备发现/认证 | 同账号 | `DISTRIBUTED_SOFTBUS_CENTER`（**system_basic**） | **三方应用拿不到**，只能被动读列表 |
 | `@ohos.bluetooth.ble` | 双向 | 近场（十米级） | `ACCESS_BLUETOOTH`（user_grant / **normal**） | 双方都要装 App；带宽小，适合配对/握手 |
 | `@ohos.bluetooth.socket`（SPP） | 双向流 | 近场 | 同上 | 经典蓝牙串口，比 BLE 带宽大 |
-| `@hms.nearlink.*`（星闪） | 双向 | 近场 | 视机型 | 新机型才有；API 在本 SDK 里存在 |
+| `@hms.nearlink.*`（星闪） | 双向 | 近场 | `ACCESS_NEARLINK`（user_grant） | 新机型才有；**真机验成（2026-11-23）**：申请权限后 `dataTransfer.createPort` 可用——注意 uuid 必须是 8-4-4-4-12 形式（32 位裸 hex 报 401），未授权时报 201 |
 | `@ohos.nfc.tag` | 单向触发 | 贴一贴 | `NFC_TAG`（normal） | 只能传很短的标识，传不了数据流 |
 | `@ohos.rpc`（IPCKit） | **双向** | **同一设备跨进程** | 无 | 对方必须提供 Service/Extension |
-| `@ohos.data.dataShare` | 共享数据 | 同一设备跨应用 | 无 | 对方必须是 DataShare 提供方 |
+| `@ohos.data.dataShare`（共享配置） | 共享数据 | 同一设备跨应用 | 无 | **不需要 DataShare extension**：`createDataProxyHandle().publish()/get()/delete()` 即可发布与读取 `datashareproxy://<bundle>/<path>`（上限 32 条、每条 4KB，默认只有发布者可读，要给别人读需填 `allowList`）。**真机验成（2026-11-23）**。注意 `getValues()` 只读多值记录，单值要用 `get()` |
 | `@ohos.pasteboard` | 双向（人工） | 同一设备 | 无 | 用户手动复制粘贴，谈不上自动化 |
 | `@ohos.commonEventManager` | 广播 | 同一设备 | 无 | 主要是系统事件，不是应用间消息总线 |
 | `@hms.core.push`（PushKit） | 服务端 → 设备 | 公网 | 需华为推送资质 + 服务端 | 单向为主；要回信得配 HTTP 接口 |

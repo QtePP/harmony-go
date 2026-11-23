@@ -156,6 +156,19 @@
 
 ### 修复
 
+- **星闪与数据代理的探测报「不可用」，全是三处用法错误（2026-11-23 真机）**：这两条通道上一版只做了
+  「真的调一次」的探测，结果两个都红，看着像平台不给。逐条查 SDK 后：
+  ①星闪 `dataTransfer.createPort(uuid)` 的 uuid 文档要求 16 字节写成 **8-4-4-4-12**
+  （`FFFFFFFF-FC70-11EA-B720-000078951234`），我们传的是 32 位裸 hex，于是 **401 Invalid parameter**；
+  ②`ACCESS_NEARLINK` 是 **user_grant**，没申请就调，于是 **201 Permission denied**——现在探测先
+  `requestPermissionsFromUser` 再建端口；
+  ③DataShare 共享配置的 URI 是 **`datashareproxy://<bundle>/<path>`**（不是 `datashare:///…`，那是
+  DataShare extension 的表），而且**单值记录要用 `get()` 读**，`getValues()` 只服务多值记录（用错会回
+  15700014「参数格式不对」，很容易误判成 URI 写错）。三点都修掉后真机（手机 CMM-AL10）两条都是绿的：
+  「星闪：可用 — 端口创建成功（可继续做配对与传输）」「数据代理：可用 — 共享配置可用（发布 + 读回
+  「probe」，已清理）」。顺带更正 `docs/INTEROP-APIS.md` 的能力表：星闪权限级、DataShare 不需要发布方
+  extension、以及上面两个 API 的成对关系。
+
 - **语音输入/朗读起不来是参数写错，不是缺语音包（2026-11-23 真机推翻旧结论）**：`Speech.ets` 与
   `ReadAloud.ets` 创建引擎时都传 `CreateEngineParams.online: 0`，而 Core Speech Kit 的
   `online` 只有 **`1` = 离线**（`@hms.ai.speechRecognizer.d.ts`：「**1**: offline. Currently, only the
