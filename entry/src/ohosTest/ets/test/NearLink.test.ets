@@ -4,7 +4,8 @@ import { common } from '@kit.AbilityKit'
 import { fileIo as fs } from '@kit.CoreFileKit'
 import { describe, expect, it } from '@ohos/hypium'
 import {
-  NearLinkPeer, NearLinkSyncLink, NearLinkSyncReceiver, nearLinkSyncSupported, scanNearLinkPeers
+  NearLinkPeer, NearLinkSyncLink, NearLinkSyncReceiver, nearLinkSyncSupported, scanNearLinkPeers,
+  setNearLinkLog
 } from '../../../main/ets/common/NearLinkSync'
 import {
   collectEntries, removeTree, sendProjectOver, SyncEntry, SyncProgress, SyncReport
@@ -75,6 +76,15 @@ function writeText(path: string, text: string): void {
   }
 }
 
+function writeZeros(path: string, length: number): void {
+  const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC)
+  try {
+    fs.writeSync(file.fd, new ArrayBuffer(length))
+  } finally {
+    fs.closeSync(file)
+  }
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
@@ -109,7 +119,16 @@ export default function nearLinkSyncTest() {
   describe('NearLinkSync', () => {
     const context = appContext()
     const root = `${context.filesDir}/nl-sync-test`
-    const diagPath = `${context.filesDir}/nl-diag.log`
+    // cacheDir is created by the system before the test runs; filesDir is not
+    // guaranteed for the test module. Write to both and keep whichever accepts.
+    const diagPaths: string[] = [`${context.cacheDir}/nl-diag.log`, `${context.filesDir}/nl-diag.log`]
+    const diagPath = diagPaths[0]
+    setNearLinkLog((line: string) => {
+      for (const path of diagPaths) {
+        diag(path, line)
+      }
+    })
+    diag(diagPath, `diag start role=${params().role} cacheDir=${context.cacheDir}`)
 
     it('carries a file across the 星闪 link', 0, async () => {
       const options = params()
@@ -123,6 +142,9 @@ export default function nearLinkSyncTest() {
       fs.mkdirSync(`${root}/src`, true)
       fs.mkdirSync(`${root}/dst`, true)
       writeText(`${root}/src/note.txt`, 'across the radio\n')
+      // Bigger than one 512-byte packet by two orders of magnitude, so the
+      // chunking path (and the negotiated payload cap) is exercised too.
+      writeZeros(`${root}/src/big.bin`, 40000)
 
       if (options.role === 'scan') {
         const peers: NearLinkPeer[] = await scanNearLinkPeers(6000)
@@ -162,8 +184,9 @@ export default function nearLinkSyncTest() {
         }
         const report = await finished
         await receiver.close()
-        expect(report === null ? -1 : (report as SyncReport).files).assertEqual(1)
-        expect(fs.statSync(`${root}/dst/note.txt`).size).assertEqual(18)
+        expect(report === null ? -1 : (report as SyncReport).files).assertEqual(2)
+        expect(fs.statSync(`${root}/dst/note.txt`).size).assertEqual(17)
+        expect(fs.statSync(`${root}/dst/big.bin`).size).assertEqual(40000)
         removeTree(root)
         return
       }
@@ -228,21 +251,19 @@ export default function nearLinkSyncTest() {
       // advertising, so retry instead of measuring from launch: a first
       // attempt that lands too early reports the same 1009700099 as a real
       // failure and would send the diagnosis in the wrong direction.
+      // Use the same path the app uses (default packet size, internal fallback),
+      // retrying while the receiver finishes starting up.
       let link: NearLinkSyncLink | null = null
-      for (let attempt = 0; attempt < 20 && link === null; attempt++) {
-        for (const mtu of [512, 65535]) {
-          const candidate = new NearLinkSyncLink(peer)
-          try {
-            await candidate.connect(mtu)
-            diag(diagPath, `connect attempt=${attempt} mtu=${mtu} ok`)
-            link = candidate
-            break
-          } catch (error) {
-            diag(diagPath, `connect attempt=${attempt} mtu=${mtu} failed ${JSON.stringify(error)}`)
-            await candidate.close()
-          }
-        }
-        if (link === null) {
+      for (let attempt = 0; attempt < 15 && link === null; attempt++) {
+        const candidate = new NearLinkSyncLink(peer)
+        try {
+          await candidate.connect()
+          diag(diagPath, `connect attempt=${attempt} ok`)
+          link = candidate
+          break
+        } catch (error) {
+          diag(diagPath, `connect attempt=${attempt} failed ${JSON.stringify(error)}`)
+          await candidate.close()
           await wait(2000)
         }
       }
@@ -263,7 +284,7 @@ export default function nearLinkSyncTest() {
       }
       await wait(500)
       diag(diagPath, `sent files=${sent === null ? -1 : (sent as SyncReport).files}`)
-      expect(sent === null ? -1 : (sent as SyncReport).files).assertEqual(1)
+      expect(sent === null ? -1 : (sent as SyncReport).files).assertEqual(2)
       removeTree(root)
     })
   })

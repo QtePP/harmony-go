@@ -7,6 +7,20 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 >
+- **星闪双机端到端跑通（2026-11-23 15:38，手机 CMM-AL10 ↔ 平板 MLR-AL00）**。设备端用例
+  `entry/src/ohosTest/ets/test/NearLink.test.ets` 两台各跑一半（`-s role receiver|sender`，
+  用 `-s peerName MatePad` 按名字选对端），两端都 `Tests run: 4, Failure: 0, Error: 0, Pass: 4`：
+  **手机经星闪把 17 字节 `note.txt` + 40000 字节 `big.bin` 传到平板**，接收端日志
+  `receiver finished files=2 error=[]`，`big.bin` 大小 40000 校验通过，会话/分帧/TCP 同一套代码。
+  四个真机才暴露的坑（均已修，注释在 `NearLinkSync.ets`）：①发送端必须自己 `createPort`，
+  否则 `connect` 报 `1009700099`；②`connect()` resolve 后约 10 秒通道才 `STATE_CONNECTED`，
+  早写的帧全丢——发送端改为等事件；③星闪把 32KB 写截成 ~7.2KB 并断链——星闪分片固定 4KB；
+  ④最后一帧后立刻 disconnect 会丢尾巴——加 `ack` 帧，星闪发送端等接收端落盘确认再关链路。
+  **诊断通道也换了**：hilog 取不到测试进程日志、测试的 `filesDir` 指向不存在的模块目录 ⇒ 改用
+  `setNearLinkLog()` 注入写 `context.cacheDir` 的 sink，`hdc shell cat` 取证（关键事实
+  「CONNECTED 迟到 10 秒」「7253 字节截断」都是它给的）。
+  回归：`bash scripts/test.sh arkts local` 与 `device`（4 用例）全绿。
+
 - **星闪双机：连接握手通了，卡在接收端回帧（2026-11-23 15:10，手机 CMM-AL10 + 平板 MLR-AL00）**。
   在 14:50 那条之后又推进了一层，结论修正：**不是配对、不是地址过期、不是 mtu、不是时序**——
   ① `getPairingState()` 两台都返回 **3（已配对）**；② 同一次 run 内重新扫描，平板地址与上次一致；

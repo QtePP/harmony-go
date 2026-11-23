@@ -70,6 +70,7 @@ const T_FILE: string = 'file'
 const T_CHUNK: string = 'chunk'
 const T_FILE_END: string = 'fileEnd'
 const T_SESSIONS: string = 'sessions'
+const T_ACK: string = 'ack'
 const T_DONE: string = 'done'
 const T_ERROR: string = 'error'
 
@@ -378,6 +379,20 @@ export interface SyncLink {
   close(): Promise<void>
   onBytes(handler: (bytes: ArrayBuffer) => void): void
   onClosed(handler: () => void): void
+  /**
+   * Whether the sender must wait for the receiver's `ack` before hanging up.
+   *
+   * TCP closes gracefully after the last byte, so it does not need one; a
+   * 星闪 link who terminates right after the final write drops whatever the
+   * other side had not read yet, so the receiver has to say it is done.
+   */
+  needsAck(): boolean
+  /**
+   * Largest payload one `send` may carry. TCP takes the protocol's full chunk;
+   * a 星闪 port is capped by the negotiated packet size, so the sender has to
+   * ask instead of assuming 32KB fits everywhere.
+   */
+  maxPayload(): number
 }
 
 /** TCP as a link: either an accepted connection or a client socket. */
@@ -421,6 +436,14 @@ export class TcpSyncLink implements SyncLink {
 
   onClosed(handler: () => void): void {
     this.closedHandler = handler
+  }
+
+  needsAck(): boolean {
+    return false
+  }
+
+  maxPayload(): number {
+    return SYNC_CHUNK_BYTES
   }
 
   async send(bytes: ArrayBuffer): Promise<void> {
@@ -528,7 +551,7 @@ export async function sendProjectOver(
       await link.send(frame({ t: T_FILE, path: entry.path, size: entry.size }))
       let sent = 0
       while (sent < entry.size) {
-        const want = Math.min(SYNC_CHUNK_BYTES, entry.size - sent)
+        const want = Math.min(link.maxPayload(), entry.size - sent)
         const buffer = new ArrayBuffer(want)
         const read = fs.readSync(source.fd, buffer, { offset: sent, length: want })
         if (read <= 0) {
@@ -555,6 +578,16 @@ export async function sendProjectOver(
   }
 
   await link.send(frame({ t: T_DONE, files: filesDone, bytes: bytesDone }))
+  if (link.needsAck()) {
+    // Closing immediately after the last write is what lost data on 星闪: the
+    // receiving side had not drained the link yet. Wait for its ack, but do not
+    // turn a missing ack into a failed transfer — the tree is on its way.
+    try {
+      await waitFor(T_ACK)
+    } catch (error) {
+      // Best effort: the receiver may be older code that does not ack.
+    }
+  }
   onProgress({
     phase: 'done', filesDone: filesDone, filesTotal: entries.length,
     bytesDone: bytesDone, bytesTotal: total, detail: '发送完成'
@@ -675,7 +708,7 @@ export class SyncSession {
 
   /** The peer went away before `done`. */
   peerClosed(): void {
-    this.finish('对方中途断开')
+    void this.finish('对方中途断开')
   }
 
   private async pump(): Promise<void> {
@@ -700,7 +733,7 @@ export class SyncSession {
       if (header.t === T_HELLO) {
         if (header.code !== this.code) {
           await this.sendFn(frame({ t: T_DENY, reason: '配对码不对' }))
-          this.finish('配对码不对，已拒绝')
+          await this.finish('配对码不对，已拒绝')
           return
         }
         this.entries = header.entries === undefined ? [] : header.entries
@@ -736,7 +769,7 @@ export class SyncSession {
       }
       if (header.t === T_CHUNK) {
         if (this.currentFile === null || data === null) {
-          this.finish('收到意外的数据块')
+          await this.finish('收到意外的数据块')
           return
         }
         fs.writeSync(this.currentFile.fd, data)
@@ -754,22 +787,22 @@ export class SyncSession {
           this.currentFile = null
         }
         if (this.currentWritten !== this.currentSize) {
-          this.finish(`${this.currentPath} 大小不符（收到 ${this.currentWritten}，声明 ${this.currentSize}）`)
+          await this.finish(`${this.currentPath} 大小不符（收到 ${this.currentWritten}，声明 ${this.currentSize}）`)
           return
         }
         this.filesDone++
         return
       }
       if (header.t === T_ERROR) {
-        this.finish(header.reason === undefined ? '对方中止了传输' : `对方中止：${header.reason}`)
+        await this.finish(header.reason === undefined ? '对方中止了传输' : `对方中止：${header.reason}`)
         return
       }
       if (header.t === T_DONE) {
-        this.finish('')
+        await this.finish('')
         return
       }
     } catch (error) {
-      this.finish(`接收失败：${(error as Error).message}`)
+      await this.finish(`接收失败：${(error as Error).message}`)
     }
   }
 
@@ -781,7 +814,7 @@ export class SyncSession {
     return total
   }
 
-  private finish(error: string): void {
+  private async finish(error: string): Promise<void> {
     if (this.finished) {
       return
     }
@@ -820,6 +853,14 @@ export class SyncSession {
       this.report.bytes = this.bytesDone
       if (this.sessionsJson.length > 0) {
         this.onSessions(this.sessionsJson)
+      }
+      // The sender may be about to hang up a link that still holds bytes; tell
+      // it the tree is safely on disk first. A failure here only costs the
+      // sender a timeout, so it must not fail the receive.
+      try {
+        await this.sendFn(frame({ t: T_ACK }))
+      } catch (error) {
+        // Peer gone after `done`; the files are already in place.
       }
       this.onFinished(this.report, '')
     } catch (moveError) {

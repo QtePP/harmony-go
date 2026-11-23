@@ -123,28 +123,23 @@ WiFi 直连要求两台设备在同一网段；星闪（NearLink）是近场链�
 - 服务 uuid 固定 `7D5F6A2C-1B8E-4C3A-9F10-2A6B7C8D9E01`；分片仍 32KB（≤65535 的端口 MTU）。
 - UI：项目同步面板里多一行「传输：WiFi 直连 / 星闪」，只在 `nearLinkSyncSupported()` 为真时出现；
   星闪发送要「搜索附近设备」选一台，星闪接收打开广告后等对方连；配对码仍然是协议层那道门。
-- **状态（诚实，2026-11-23 14:50）**：端口/广告/扫描这条腿在两台设备上都能开（两台都报 `canIUse` 为真、
-  面板都出现传输选择），但**两台设备之间的字节通道尚未跑通**，而且卡点已经定位到 `connect()`，
-  不是 UI：
-  - 双机测试由设备端用例驱动（`entry/src/ohosTest/ets/test/NearLink.test.ets`，见下），
-    用 `aa test … -s role receiver|sender|scan` 分别在两台机器上跑；**`-s` 的键在
-    `AbilityDelegatorArgs.parameters` 里是 `-s role` 这种原样字符串**（日志实测：
-    `keys=[-b,-m,-s role,-s timeout,-s unittest,moduleName]`），不是裸 `role`。
-  - `scan` 侧确实扫到了对端：`NEARLINK-PEER 70:1D:79:0D:23:A9 name=niika的MatePad Mini 悦读版 rssi=-57`，
-    说明发现/广告是通的。
-  - 一开始 `dataTransfer.connect()` 直接抛 `1009700099 Operation failed.`；怀疑过配对（实测两台
-    `getPairingState() === PAIRING_STATE_PAIRED (3)`，排除）、地址过期（同一次 run 内重新扫描，
-    地址与上次相同 `70:1D:…`，排除）、包大小（`mtu` 512 与 65535 都失败，排除）、时序
-    （20 次 × 2s 重试全失败，排除）。
-  - **真正的原因是发送端没有自己的端口**：`dataTransfer.createPort(uuid)` 原来只在接收端调用。
-    补上之后 `connect()` **成功**，错误从 `Operation failed.`（连接被拒）变成
-    `对方没有回应（可能不在接收模式）`（连接建立、hello 已发出、但接收端没回 accept）。
-  - 下一步是接收端为什么收不到/不回：`readData` 在接收端没有触发，怀疑接收端也需要在
-    `connectionStateChanged` 里拿到对端地址、或接收端的 `writeData` 需要显式 `connect` 回去。
-    接收端诊断日志这一轮没取到（测试进程的 `filesDir` 指向 `haps/entry_test/files`，该目录不存在，
-    写盘被静默 catch 吞掉），下轮先修诊断通道再定位。
-  - 协议与 UI 侧已就位：`SyncSession` 与 TCP 共用同一份收帧/落盘/配对码逻辑，设备内 loopback
-    用例已把这份逻辑钉住（`ProjectSync.test.ets`）。
+- **状态：星闪真机双向验成（2026-11-23 15:38，手机 CMM-AL10 ↔ 平板 MLR-AL00）**。
+  两个设备端用例各跑一半（`-s role receiver|sender`，见 `entry/src/ohosTest/ets/test/NearLink.test.ets`），
+  两端都 `Tests run: 4, Pass: 4`：**17 字节文本 + 40000 字节二进制**从手机经星闪落到平板，
+  接收端 `receiver finished files=2 error=[]`，`big.bin` 大小 40000 校验通过。
+  打通前有四道坎，都是真机实测出来的，全部写进了代码注释：
+  ① **发送端也必须 `createPort`**（官方文档：「发送端和接收端均需注册」）——不建端口时
+     `connect()` 报 `1009700099`；
+  ② **`connect()` resolve ≠ 通道可用**：接收端 `connectionStateChanged` 在 connect 返回约 10 秒后
+     才变 `STATE_CONNECTED`，此前写出的帧全丢。发送端现在等这个事件（30s 超时）再发 hello；
+  ③ **分片要按星闪的包大小**：协商出来的 `mtu` 事件里是 0，写 32KB 会被截成 ~7.2KB 并断链；
+     星闪链路固定用 **4KB** 分片（`SyncLink.maxPayload()`，TCP 仍 32KB）；
+  ④ **发送端不能在最后一帧后立刻断开**：`writeData` resolve 只是本地栈收下，接收端还没读完就
+     `disconnect` 会丢尾巴。协议加了 `ack` 帧：接收端落盘后回 `{t:'ack'}`，星闪发送端等到 ack
+     再关链路（TCP 不需要，`SyncLink.needsAck()` 区分）。
+  诊断方法也沉淀了一条：测试进程的日志不可靠（hilog 取不到、`filesDir` 指向不存在的模块目录），
+  改成 `setNearLinkLog()` 注入一个写 `context.cacheDir` 的 sink，用 `hdc shell cat` 取——就是靠它
+  看到「连接 10 秒后才 CONNECTED」「32KB 被截成 7253」这两个关键事实。
 
 ## 7. 还没做
 

@@ -30,6 +30,39 @@ export const NEARLINK_SYNC_UUID: string = '7D5F6A2C-1B8E-4C3A-9F10-2A6B7C8D9E01'
 /** Requested packet size; the port negotiates down if the peer wants less. */
 const NEARLINK_MTU: number = 65535
 
+/**
+ * Chunk ceiling for 星闪.
+ *
+ * Not the protocol's 32KB: on hardware the negotiated size came back as 0 and
+ * a 32KB write was delivered as ~7.2KB with the link dropping, while 4KB
+ * packets are small enough to go through whatever the stack picked.
+ */
+const SYNC_NEARLINK_CHUNK_BYTES: number = 4 * 1024
+
+/**
+ * A place to put facts the radio will not tell us through the API.
+ *
+ * The 星闪 events are all-or-nothing from the caller's side: a refused packet
+ * and a peer that never answered look the same, so the transport records what
+ * it actually did. The test harness points this at a file it can pull.
+ */
+export type NearLinkLog = (line: string) => void
+
+let logSink: NearLinkLog = (_line: string) => {}
+
+export function setNearLinkLog(sink: NearLinkLog): void {
+  logSink = sink
+}
+
+/** Record one transport fact; never throws into the caller. */
+export function nearLinkLog(line: string): void {
+  try {
+    logSink(line)
+  } catch (error) {
+    // A diagnostics sink must not break the transport.
+  }
+}
+
 /** One device seen by the scanner. */
 export interface NearLinkPeer {
   address: string
@@ -100,7 +133,9 @@ async function startAdvertise(): Promise<number> {
       includeDeviceName: true
     }
   }
-  return await advertising.startAdvertising(params)
+  const id = await advertising.startAdvertising(params)
+  nearLinkLog(`recv advertising started id=${id}`)
+  return id
 }
 
 /**
@@ -112,6 +147,13 @@ export class NearLinkSyncLink implements SyncLink {
   private closedHandler: (() => void) | null = null
   private connected: boolean = false
   private portOpen: boolean = false
+  /** Resolved when the port channel reports CONNECTED, not when connect() returns. */
+  private mtu: number = NEARLINK_MTU
+  /** What the two stacks actually agreed on, from the CONNECTED event. */
+  private negotiatedMtu: number = 0
+  private readyResolve: () => void = () => {}
+  private readyReject: (error: Error) => void = () => {}
+  private ready: Promise<void> | null = null
   private readonly onRead = (params: dataTransfer.DataParams): void => {
     if (params.address !== this.address || this.bytesHandler === null) {
       return
@@ -123,8 +165,22 @@ export class NearLinkSyncLink implements SyncLink {
       return
     }
     const state = result.state
-    if (state === constant.ConnectionState.STATE_DISCONNECTED && this.closedHandler !== null) {
-      this.closedHandler()
+    nearLinkLog(`link state address=${result.address} state=${state}`)
+    if (state === constant.ConnectionState.STATE_CONNECTED) {
+      // The requested mtu is a wish; the event carries the negotiated one, and
+      // writing more than it silently loses the tail of the packet.
+      if (result.mtu > 0) {
+        this.negotiatedMtu = result.mtu
+        nearLinkLog(`link negotiated mtu=${result.mtu}`)
+      }
+      this.readyResolve()
+      return
+    }
+    if (state === constant.ConnectionState.STATE_DISCONNECTED) {
+      this.readyReject(new Error('星闪链路已断开'))
+      if (this.closedHandler !== null) {
+        this.closedHandler()
+      }
     }
   }
 
@@ -141,7 +197,17 @@ export class NearLinkSyncLink implements SyncLink {
    * through. The protocol's frame size must then stay under whatever was
    * negotiated.
    */
+  needsAck(): boolean {
+    return true
+  }
+
+  maxPayload(): number {
+    const negotiated = this.negotiatedMtu > 0 ? this.negotiatedMtu : this.mtu
+    return Math.max(256, Math.min(negotiated, SYNC_NEARLINK_CHUNK_BYTES))
+  }
+
   async connect(mtu: number = NEARLINK_MTU): Promise<void> {
+    this.mtu = mtu
     // Both ends own the port: the receiver advertises it, and the sender has to
     // have it open locally too before the channel can be established —
     // connecting without it failed with 1009700099 on hardware.
@@ -153,8 +219,38 @@ export class NearLinkSyncLink implements SyncLink {
     }
     dataTransfer.on('readData', this.onRead)
     dataTransfer.on('connectionStateChanged', this.onState)
-    await dataTransfer.connect({ address: this.address, uuid: NEARLINK_SYNC_UUID, mtu: mtu })
+    this.ready = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve
+      this.readyReject = reject
+    })
+    nearLinkLog(`link connect attempt address=${this.address} mtu=${mtu}`)
+    try {
+      await dataTransfer.connect({ address: this.address, uuid: NEARLINK_SYNC_UUID, mtu: mtu })
+    } catch (error) {
+      // The stack refuses an oversized packet request outright; step down to
+      // sizes that have been seen to work instead of failing the transfer.
+      nearLinkLog(`link connect mtu=${mtu} refused ${JSON.stringify(error)}`)
+      const fallback = mtu > 1024 ? 1024 : 512
+      this.mtu = fallback
+      await dataTransfer.connect({ address: this.address, uuid: NEARLINK_SYNC_UUID, mtu: fallback })
+    }
+    // connect() resolving only means the request was accepted: on hardware the
+    // port channel went CONNECTED about ten seconds later, and frames written
+    // before that were lost. Wait for the event, and treat the wait as part of
+    // the connection.
+    let timer = -1
+    const timeout = new Promise<void>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('星闪链路没有在 30s 内建立')), 30000)
+    })
+    try {
+      await Promise.race([this.ready, timeout])
+    } finally {
+      if (timer !== -1) {
+        clearTimeout(timer)
+      }
+    }
     this.connected = true
+    nearLinkLog(`link ready address=${this.address} mtu=${mtu}`)
   }
 
   onBytes(handler: (bytes: ArrayBuffer) => void): void {
@@ -168,7 +264,12 @@ export class NearLinkSyncLink implements SyncLink {
   async send(bytes: ArrayBuffer): Promise<void> {
     // writeData is per packet; the protocol's 32KB chunk keeps us under the
     // negotiated MTU, and one chunk in flight gives backpressure.
-    await dataTransfer.writeData({ address: this.address, uuid: NEARLINK_SYNC_UUID, data: bytes })
+    try {
+      await dataTransfer.writeData({ address: this.address, uuid: NEARLINK_SYNC_UUID, data: bytes })
+    } catch (error) {
+      nearLinkLog(`link write failed bytes=${bytes.byteLength} ${JSON.stringify(error)}`)
+      throw new Error((error as Error).message)
+    }
   }
 
   async close(): Promise<void> {
@@ -217,11 +318,20 @@ export class NearLinkSyncReceiver {
   private session: SyncSession | null = null
   private finished: boolean = false
   private readonly onRead = (params: dataTransfer.DataParams): void => {
+    nearLinkLog(`recv readData from=${params.address} bytes=${params.data.byteLength}`)
     if (this.session === null) {
       return
     }
     this.peer = params.address
     void this.session.push(params.data)
+  }
+  private readonly onConnState = (result: dataTransfer.ConnectionResult): void => {
+    nearLinkLog(`recv connectionState address=${result.address} state=${result.state}`)
+    if (result.state === constant.ConnectionState.STATE_CONNECTED) {
+      // The connection event carries the peer address even when no payload has
+      // arrived yet, which is what a reply needs.
+      this.peer = result.address
+    }
   }
 
   get pairCode(): string {
@@ -250,6 +360,7 @@ export class NearLinkSyncReceiver {
     // TCP sense.
     dataTransfer.createPort(NEARLINK_SYNC_UUID)
     this.portOpen = true
+    nearLinkLog(`recv port created uuid=${NEARLINK_SYNC_UUID} code=${this.code}`)
     this.session = new SyncSession(
       targetRoot,
       staging,
@@ -264,20 +375,33 @@ export class NearLinkSyncReceiver {
       }
     )
     dataTransfer.on('readData', this.onRead)
+    dataTransfer.on('connectionStateChanged', this.onConnState)
     this.advId = await startAdvertise()
     console.info(`NEARLINK-RECV advertising id=${this.advId} code=${this.code}`)
   }
 
   private async sendBack(bytes: ArrayBuffer): Promise<void> {
     if (this.peer.length === 0) {
+      nearLinkLog('recv sendBack without peer')
       throw new Error('还没有星闪对端')
     }
-    await dataTransfer.writeData({ address: this.peer, uuid: NEARLINK_SYNC_UUID, data: bytes })
+    try {
+      await dataTransfer.writeData({ address: this.peer, uuid: NEARLINK_SYNC_UUID, data: bytes })
+      nearLinkLog(`recv sendBack ok bytes=${bytes.byteLength}`)
+    } catch (error) {
+      nearLinkLog(`recv sendBack failed bytes=${bytes.byteLength} ${JSON.stringify(error)}`)
+      throw new Error((error as Error).message)
+    }
   }
 
   async close(): Promise<void> {
     try {
       dataTransfer.off('readData', this.onRead)
+    } catch (error) {
+      // No listener registered.
+    }
+    try {
+      dataTransfer.off('connectionStateChanged', this.onConnState)
     } catch (error) {
       // No listener registered.
     }
