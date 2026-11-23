@@ -3,9 +3,13 @@ import { fileIo as fs } from '@kit.CoreFileKit'
 import { ProjectStore, ProjectSummary } from '../model/ProjectModel'
 import { SessionExport, SessionStore, SessionSummary } from '../model/ChatModel'
 import {
-  collectEntries, removeTree, sendProject, SYNC_PORT, SyncProgress, SyncReceiver, SyncReport,
-  totalBytes
+  collectEntries, makePairCode, removeTree, sendProject, sendProjectOver, SYNC_PORT, SyncEntry,
+  SyncProgress, SyncReceiver, SyncReport, totalBytes
 } from '../common/ProjectSync'
+import {
+  ensureNearLinkPermission, NearLinkPeer, NearLinkSyncLink, NearLinkSyncReceiver, nearLinkSyncSupported,
+  scanNearLinkPeers
+} from '../common/NearLinkSync'
 import { localLanAddress } from '../common/Interop'
 
 /**
@@ -35,10 +39,24 @@ export struct SyncSheet {
   @State message: string = ''
   @State receiveCode: string = ''
   @State receiveAddress: string = ''
+  /**
+   * Whether a receiver is live. The Receiver object itself is a plain field on
+   * purpose (ArkUI does not deep-track it), so the button label has to read a
+   * @State — with the object alone the label stayed on 开始接收 while the port
+   * was already listening, and the only way to stop was to guess.
+   */
+  @State receiving: boolean = false
   @State report: SyncReport | null = null
   @State sessions: SessionSummary[] = []
   @State selectedSessions: string[] = []
+  /** 'wifi' or 'nearlink'; 星闪 only offered when the radio is there. */
+  @State transport: string = 'wifi'
+  @State peers: NearLinkPeer[] = []
+  @State scanning: boolean = false
+  @State peerAddress: string = ''
+  @State nearLinkNote: string = ''
   private sessionStore: SessionStore = new SessionStore()
+  private nlReceiver: NearLinkSyncReceiver | null = null
   @StorageLink('accent') accent: string = '#4D6BFE'
   onClose: () => void = () => {}
   private receiver: SyncReceiver | null = null
@@ -46,6 +64,16 @@ export struct SyncSheet {
 
   aboutToAppear(): void {
     void this.loadProjects()
+    void this.refreshAddress()
+  }
+
+  /**
+   * Resolve the LAN address before it is needed. Setting it only inside
+   * startReceive meant the 接收 pane opened on 「本机不在局域网内」 for every
+   * user who had not pressed 开始接收 yet — the address was knowable all along.
+   */
+  private async refreshAddress(): Promise<void> {
+    this.receiveAddress = await localLanAddress()
   }
 
   /** Conversations of the selected project, offered as an optional payload. */
@@ -63,6 +91,7 @@ export struct SyncSheet {
       removeTree(`${(getContext(this) as common.UIAbilityContext).cacheDir}/sync-incoming`)
       this.receiver = null
     }
+    this.receiving = false
   }
 
   private async loadProjects(): Promise<void> {
@@ -136,8 +165,16 @@ export struct SyncSheet {
 
   private async startSend(): Promise<void> {
     const context = getContext(this) as common.UIAbilityContext
-    if (this.host.trim().length === 0 || this.code.trim().length === 0) {
-      this.message = '先填对方地址和配对码（对方在「接收」页面上显示）'
+    if (this.code.trim().length === 0) {
+      this.message = '先填配对码（对方在「接收」页面上显示）'
+      return
+    }
+    if (this.transport === 'nearlink' && this.peerAddress.length === 0) {
+      this.message = '先搜到并选择一个星闪对端'
+      return
+    }
+    if (this.transport !== 'nearlink' && this.host.trim().length === 0) {
+      this.message = '先填对方地址'
       return
     }
     const skipped: string[] = []
@@ -158,18 +195,23 @@ export struct SyncSheet {
       phase: 'connect', filesDone: 0, filesTotal: entries.length,
       bytesDone: 0, bytesTotal: totalBytes(entries), detail: '正在连接'
     }
-    const parts = this.host.trim().split(':')
-    const host = parts[0]
-    const port = parts.length > 1 ? Number(parts[1]) : SYNC_PORT
     try {
-      const report = await sendProject(
-        this.workspace(), entries, host, port, this.code.trim(),
-        this.projectName(), sessionsJson,
-        (progress: SyncProgress) => {
-          this.progress = progress
-        },
-        () => this.cancelRequested
-      )
+      let report: SyncReport
+      if (this.transport === 'nearlink') {
+        report = await this.sendOverNearLink(entries, sessionsJson)
+      } else {
+        const parts = this.host.trim().split(':')
+        const host = parts[0]
+        const port = parts.length > 1 ? Number(parts[1]) : SYNC_PORT
+        report = await sendProject(
+          this.workspace(), entries, host, port, this.code.trim(),
+          this.projectName(), sessionsJson,
+          (progress: SyncProgress) => {
+            this.progress = progress
+          },
+          () => this.cancelRequested
+        )
+      }
       this.report = report
       this.message = `已发送 ${report.files} 个文件 · ${this.sizeText(report.bytes)}`
     } catch (error) {
@@ -196,49 +238,136 @@ export struct SyncSheet {
     await this.loadSessions()
   }
 
+  /** Send over 星闪: connect one peer, then the same protocol runs on it. */
+  private async sendOverNearLink(entries: SyncEntry[], sessionsJson: string): Promise<SyncReport> {
+    const context = getContext(this) as common.UIAbilityContext
+    const granted = await ensureNearLinkPermission(context)
+    if (!granted) {
+      throw new Error('未授予星闪权限')
+    }
+    const link = new NearLinkSyncLink(this.peerAddress)
+    try {
+      await link.connect()
+      return await sendProjectOver(
+        link,
+        this.workspace(),
+        entries,
+        this.code.trim(),
+        this.projectName(),
+        sessionsJson,
+        (progress: SyncProgress) => {
+          this.progress = progress
+        },
+        () => this.cancelRequested
+      )
+    } finally {
+      await link.close()
+    }
+  }
+
+  /** Look for nearby 星闪 devices to send to. */
+  private async scanPeers(): Promise<void> {
+    const context = getContext(this) as common.UIAbilityContext
+    const granted = await ensureNearLinkPermission(context)
+    if (!granted) {
+      this.nearLinkNote = '未授予星闪权限'
+      return
+    }
+    this.scanning = true
+    this.nearLinkNote = '搜索中…'
+    try {
+      this.peers = await scanNearLinkPeers(3000)
+      this.nearLinkNote = this.peers.length === 0 ? '附近没有发现星闪设备' : ''
+    } catch (error) {
+      this.nearLinkNote = `搜索失败：${(error as Error).message}`
+    } finally {
+      this.scanning = false
+    }
+  }
+
   private async startReceive(): Promise<void> {
     const context = getContext(this) as common.UIAbilityContext
+    const nl = this.nlReceiver
+    if (nl !== null) {
+      await nl.close()
+      this.nlReceiver = null
+      this.receiveCode = ''
+      this.busy = false
+      this.receiving = false
+      return
+    }
     if (this.receiver !== null) {
       await this.receiver.close()
       this.receiver = null
       this.receiveCode = ''
+      this.receiving = false
+      return
+    }
+    this.busy = true
+    this.report = null
+    this.message = ''
+    this.progress = null
+    const finished = (report: SyncReport, error: string): void => {
+      this.busy = false
+      this.receiveCode = ''
+      this.receiver = null
+      this.nlReceiver = null
+      this.receiving = false
+      if (error.length > 0) {
+        this.message = error
+        return
+      }
+      this.report = report
+      const skipped = report.skipped.length > 0 ? `；跳过 ${report.skipped.length} 个已存在的文件` : ''
+      this.message = `已接收 ${report.files} 个文件 · ${this.sizeText(report.bytes)}${skipped}`
+      this.loadTopLevel()
+    }
+    const onProgress = (progress: SyncProgress): void => {
+      this.progress = progress
+    }
+    const onSessions = (json: string): void => {
+      void this.importSessions(json)
+    }
+    if (this.transport === 'nearlink') {
+      const granted = await ensureNearLinkPermission(context)
+      if (!granted) {
+        this.busy = false
+        this.message = '未授予星闪权限'
+        return
+      }
+      const receiver = new NearLinkSyncReceiver()
+      this.nlReceiver = receiver
+      try {
+        await receiver.open(context, this.workspace(), makePairCode(), onProgress, onSessions, finished)
+        this.receiveCode = receiver.pairCode
+        this.receiving = true
+        this.message = '等待星闪对端连接（对方在「发送」里搜到这台设备）'
+      } catch (error) {
+        this.busy = false
+        this.nlReceiver = null
+        this.receiving = false
+        this.message = `无法开始星闪接收：${(error as Error).message}`
+      }
       return
     }
     const receiver = new SyncReceiver()
     this.receiver = receiver
-    this.busy = true
-    this.report = null
-    this.message = ''
     this.receiveAddress = await localLanAddress()
     try {
       const port = await receiver.open(
         context,
         this.workspace(),
-        (progress: SyncProgress) => {
-          this.progress = progress
-        },
-        (json: string) => {
-          void this.importSessions(json)
-        },
-        (report: SyncReport, error: string) => {
-          this.busy = false
-          this.receiveCode = ''
-          this.receiver = null
-          if (error.length > 0) {
-            this.message = error
-            return
-          }
-          this.report = report
-          const skipped = report.skipped.length > 0 ? `；跳过 ${report.skipped.length} 个已存在的文件` : ''
-          this.message = `已接收 ${report.files} 个文件 · ${this.sizeText(report.bytes)}${skipped}`
-          this.loadTopLevel()
-        }
+        onProgress,
+        onSessions,
+        finished
       )
       this.receiveCode = receiver.pairCode
+      this.receiving = true
       this.message = `等待对方连接（端口 ${port}）`
     } catch (error) {
       this.busy = false
       this.receiver = null
+      this.receiving = false
       this.message = `无法开始接收：${(error as Error).message}`
     }
   }
@@ -258,6 +387,10 @@ export struct SyncSheet {
             if (this.receiver !== null) {
               void this.receiver.close()
               this.receiver = null
+            }
+            if (this.nlReceiver !== null) {
+              void this.nlReceiver.close()
+              this.nlReceiver = null
             }
             this.receiveCode = ''
             this.onClose()
@@ -417,19 +550,99 @@ export struct SyncSheet {
           .onClick(() => {
             if (!this.busy) {
               this.mode = 'receive'
+              void this.refreshAddress()
             }
           })
       }
       .width('100%')
 
+      // 传输方式：同一套协议，两条链路。星闪只在设备有这个射频时出现。
+      if (nearLinkSyncSupported()) {
+        Row({ space: 8 }) {
+          Text('传输').fontSize(12).fontColor($r('app.color.text_secondary'))
+          Blank()
+          Button('WiFi 直连')
+            .fontSize(12)
+            .height(30)
+            .backgroundColor(this.transport === 'wifi' ? this.accent : $r('app.color.surface_muted'))
+            .fontColor(this.transport === 'wifi' ? Color.White : $r('app.color.text_primary'))
+            .enabled(!this.busy)
+            .onClick(() => {
+              this.transport = 'wifi'
+              this.nearLinkNote = ''
+            })
+          Button('星闪')
+            .fontSize(12)
+            .height(30)
+            .backgroundColor(this.transport === 'nearlink' ? this.accent : $r('app.color.surface_muted'))
+            .fontColor(this.transport === 'nearlink' ? Color.White : $r('app.color.text_primary'))
+            .enabled(!this.busy)
+            .onClick(() => {
+              this.transport = 'nearlink'
+              this.nearLinkNote = '星闪是近场链路，双方都要装本应用并打开蓝牙式配对'
+            })
+        }
+        .width('100%')
+      }
+
       if (this.mode === 'send') {
         Column({ space: 8 }) {
-          TextInput({ text: this.host, placeholder: '对方地址，如 192.168.1.5:4519' })
-            .fontSize(14)
-            .height(42)
-            .onChange((value: string) => {
-              this.host = value
-            })
+          if (this.transport === 'nearlink') {
+            Row({ space: 8 }) {
+              Button(this.scanning ? '搜索中…' : '搜索附近设备')
+                .fontSize(12)
+                .height(34)
+                .layoutWeight(1)
+                .backgroundColor($r('app.color.surface_muted'))
+                .fontColor($r('app.color.text_primary'))
+                .enabled(!this.scanning)
+                .onClick(() => {
+                  void this.scanPeers()
+                })
+            }
+            .width('100%')
+            if (this.peers.length > 0) {
+              Column({ space: 2 }) {
+                ForEach(this.peers, (peer: NearLinkPeer) => {
+                  Row({ space: 8 }) {
+                    Text(this.peerAddress === peer.address ? '◉' : '○')
+                      .fontSize(14)
+                      .fontColor(this.peerAddress === peer.address ?
+                        this.accent : $r('app.color.text_secondary'))
+                    Text(peer.name)
+                      .fontSize(13)
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      .layoutWeight(1)
+                    Text(`${peer.rssi}`)
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                  }
+                  .width('100%')
+                  .onClick(() => {
+                    this.peerAddress = peer.address
+                  })
+                }, (peer: NearLinkPeer) => peer.address)
+              }
+              .width('100%')
+              .padding(8)
+              .backgroundColor($r('app.color.surface_muted'))
+              .borderRadius(8)
+            }
+            if (this.nearLinkNote.length > 0) {
+              Text(this.nearLinkNote)
+                .fontSize(10)
+                .fontColor($r('app.color.text_tertiary'))
+                .width('100%')
+            }
+          } else {
+            TextInput({ text: this.host, placeholder: '对方地址，如 192.168.1.5:4519' })
+              .fontSize(14)
+              .height(42)
+              .onChange((value: string) => {
+                this.host = value
+              })
+          }
           TextInput({ text: this.code, placeholder: '对方显示的 6 位配对码' })
             .fontSize(14)
             .height(42)
@@ -451,8 +664,10 @@ export struct SyncSheet {
         .width('100%')
       } else {
         Column({ space: 8 }) {
-          Text(this.receiveAddress.length > 0 ?
-            `本机地址：${this.receiveAddress}（端口 ${SYNC_PORT}）` : '本机不在局域网内，接收方需要同一 WiFi')
+          Text(this.transport === 'nearlink' ?
+            '星闪接收：打开后广告本机，等对方在「发送」里搜到并连接' :
+            (this.receiveAddress.length > 0 ?
+              `本机地址：${this.receiveAddress}（端口 ${SYNC_PORT}）` : '本机不在局域网内，接收方需要同一 WiFi'))
             .fontSize(12)
             .fontColor($r('app.color.text_secondary'))
             .width('100%')
@@ -469,13 +684,14 @@ export struct SyncSheet {
               .width('100%')
               .textAlign(TextAlign.Center)
           }
-          Button(this.receiver !== null ? '停止接收' : '开始接收')
+          Button(this.receiving ? '停止接收' : '开始接收')
             .width('100%')
             .height(42)
             .fontSize(14)
-            .backgroundColor(this.receiver !== null ?
+            .backgroundColor(this.receiving ?
               $r('app.color.surface_muted') : this.accent)
-            .fontColor(this.receiver !== null ? $r('app.color.text_primary') : Color.White)
+            .fontColor(this.receiving ?
+              $r('app.color.text_primary') : Color.White)
             .onClick(() => {
               void this.startReceive()
             })

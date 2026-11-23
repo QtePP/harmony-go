@@ -365,19 +365,108 @@ export function makePairCode(): string {
   return text.length === 6 ? text : '0'.repeat(6 - text.length) + text
 }
 
+
 /**
- * Sender: connect, hand over the manifest, stream every file.
+ * What the sync protocol needs from a transport.
  *
- * Flow control is one chunk in flight: `send` resolves when the socket accepted
- * the bytes, which is the only backpressure signal this API exposes. It keeps
- * memory flat, and on a slow link it is what prevents the writer from queueing
- * a whole file in the OS.
+ * TCP is one implementation; 星闪's port channel is another. Both hand over
+ * arbitrary byte chunks (FrameReader reassembles frames), so the protocol never
+ * has to know which wire it rides on.
  */
-export async function sendProject(
+export interface SyncLink {
+  send(bytes: ArrayBuffer): Promise<void>
+  close(): Promise<void>
+  onBytes(handler: (bytes: ArrayBuffer) => void): void
+  onClosed(handler: () => void): void
+}
+
+/** TCP as a link: either an accepted connection or a client socket. */
+export class TcpSyncLink implements SyncLink {
+  private conn: socket.TCPSocketConnection | null = null
+  private client: socket.TCPSocket | null = null
+  private bytesHandler: ((bytes: ArrayBuffer) => void) | null = null
+  private closedHandler: (() => void) | null = null
+
+  constructor(conn: socket.TCPSocketConnection | null, client: socket.TCPSocket | null) {
+    this.conn = conn
+    this.client = client
+    if (conn !== null) {
+      conn.on('message', (info: socket.SocketMessageInfo) => {
+        if (this.bytesHandler !== null) {
+          this.bytesHandler(info.message)
+        }
+      })
+      conn.on('close', () => {
+        if (this.closedHandler !== null) {
+          this.closedHandler()
+        }
+      })
+    } else if (client !== null) {
+      client.on('message', (info: socket.SocketMessageInfo) => {
+        if (this.bytesHandler !== null) {
+          this.bytesHandler(info.message)
+        }
+      })
+      client.on('close', () => {
+        if (this.closedHandler !== null) {
+          this.closedHandler()
+        }
+      })
+    }
+  }
+
+  onBytes(handler: (bytes: ArrayBuffer) => void): void {
+    this.bytesHandler = handler
+  }
+
+  onClosed(handler: () => void): void {
+    this.closedHandler = handler
+  }
+
+  async send(bytes: ArrayBuffer): Promise<void> {
+    if (this.conn !== null) {
+      await this.conn.send({ data: bytes })
+      return
+    }
+    if (this.client !== null) {
+      await this.client.send({ data: bytes })
+      return
+    }
+    throw new Error('连接已经关闭')
+  }
+
+  async close(): Promise<void> {
+    if (this.conn !== null) {
+      try {
+        await this.conn.close()
+      } catch (error) {
+        // Already closed.
+      }
+      this.conn = null
+    }
+    if (this.client !== null) {
+      try {
+        await this.client.close()
+      } catch (error) {
+        // Already closed.
+      }
+      this.client = null
+    }
+  }
+}
+
+/**
+ * Sender: hand over the manifest, stream every file, over any link.
+ *
+ * Flow control is one chunk in flight: `send` resolving means the transport
+ * accepted the bytes, which is the only backpressure signal these APIs expose.
+ * It keeps memory flat, and on a slow link it is what stops the writer from
+ * queueing a whole file in the OS.
+ */
+export async function sendProjectOver(
+  link: SyncLink,
   root: string,
   entries: SyncEntry[],
-  host: string,
-  port: number,
   code: string,
   name: string,
   sessionsJson: string,
@@ -385,18 +474,10 @@ export async function sendProject(
   cancelled: () => boolean
 ): Promise<SyncReport> {
   const total = totalBytes(entries)
-  const tcp = socket.constructTCPSocketInstance()
-  await tcp.bind({ address: '0.0.0.0', port: 0, family: 1 })
-  await tcp.connect({ address: { address: host, port: port, family: 1 }, timeout: 8000 })
-
   const reader: FrameReader = new FrameReader()
-  let accepted = false
   let denied = ''
-  tcp.on('message', (info: socket.SocketMessageInfo) => {
-    reader.push(info.message)
-  })
-  tcp.on('close', () => {
-    accepted = false
+  link.onBytes((bytes: ArrayBuffer) => {
+    reader.push(bytes)
   })
 
   const waitFor = async (wanted: string): Promise<SyncFrame> => {
@@ -416,89 +497,91 @@ export async function sendProject(
     throw new Error('对方没有回应（可能不在接收模式）')
   }
 
-  try {
-    await tcp.send({
-      data: frame({
-        t: T_HELLO, version: 1, code: code, name: name,
-        files: entries.length, bytes: total, entries: entries
-      })
-    })
-    await waitFor(T_ACCEPT)
-    accepted = true
-    // Conversations ride on their own frame before the files: they are a few
-    // hundred KB of JSON at most, and keeping them out of the manifest means
-    // the receiver can import them with the same code path that reads its own
-    // store, instead of unpacking a pseudo-file.
-    if (sessionsJson.length > 0) {
-      const encoded = encodeUtf8(sessionsJson)
-      await tcp.send({ data: frame({ t: T_SESSIONS }, encoded.buffer as ArrayBuffer) })
+  await link.send(frame({
+    t: T_HELLO, version: 1, code: code, name: name,
+    files: entries.length, bytes: total, entries: entries
+  }))
+  await waitFor(T_ACCEPT)
+  // Conversations ride on their own frame before the files: they are a few
+  // hundred KB of JSON at most, and keeping them out of the manifest means the
+  // receiver can import them with the same code path that reads its own store,
+  // instead of unpacking a pseudo-file.
+  if (sessionsJson.length > 0) {
+    const encoded = encodeUtf8(sessionsJson)
+    await link.send(frame({ t: T_SESSIONS }, encoded.buffer as ArrayBuffer))
+  }
+
+  let filesDone = 0
+  let bytesDone = 0
+  onProgress({
+    phase: 'send', filesDone: 0, filesTotal: entries.length,
+    bytesDone: 0, bytesTotal: total, detail: '开始发送'
+  })
+
+  for (const entry of entries) {
+    if (cancelled()) {
+      await link.send(frame({ t: T_ERROR, reason: 'cancelled' }))
+      throw new Error('已取消')
     }
-
-    let filesDone = 0
-    let bytesDone = 0
-    onProgress({
-      phase: 'send', filesDone: 0, filesTotal: entries.length,
-      bytesDone: 0, bytesTotal: total, detail: '开始发送'
-    })
-
-    for (const entry of entries) {
-      if (cancelled()) {
-        await tcp.send({ data: frame({ t: T_ERROR, reason: 'cancelled' }) })
-        throw new Error('已取消')
-      }
-      const source = fs.openSync(resolveInside(root, entry.path), fs.OpenMode.READ_ONLY)
-      try {
-        await tcp.send({ data: frame({ t: T_FILE, path: entry.path, size: entry.size }) })
-        let sent = 0
-        while (sent < entry.size) {
-          const want = Math.min(SYNC_CHUNK_BYTES, entry.size - sent)
-          const buffer = new ArrayBuffer(want)
-          const read = fs.readSync(source.fd, buffer, { offset: sent, length: want })
-          if (read <= 0) {
-            throw new Error(`读取文件提前结束：${entry.path}`)
-          }
-          const slice = read === want ? buffer : buffer.slice(0, read) as ArrayBuffer
-          await tcp.send({ data: frame({ t: T_CHUNK }, slice) })
-          sent += read
-          bytesDone += read
-          onProgress({
-            phase: 'send', filesDone: filesDone, filesTotal: entries.length,
-            bytesDone: bytesDone, bytesTotal: total, detail: entry.path
-          })
-          if (cancelled()) {
-            await tcp.send({ data: frame({ t: T_ERROR, reason: 'cancelled' }) })
-            throw new Error('已取消')
-          }
+    const source = fs.openSync(resolveInside(root, entry.path), fs.OpenMode.READ_ONLY)
+    try {
+      await link.send(frame({ t: T_FILE, path: entry.path, size: entry.size }))
+      let sent = 0
+      while (sent < entry.size) {
+        const want = Math.min(SYNC_CHUNK_BYTES, entry.size - sent)
+        const buffer = new ArrayBuffer(want)
+        const read = fs.readSync(source.fd, buffer, { offset: sent, length: want })
+        if (read <= 0) {
+          throw new Error(`读取文件提前结束：${entry.path}`)
         }
-        await tcp.send({ data: frame({ t: T_FILE_END, path: entry.path, size: entry.size }) })
-        filesDone++
-      } finally {
-        fs.closeSync(source)
+        const slice = read === want ? buffer : buffer.slice(0, read) as ArrayBuffer
+        await link.send(frame({ t: T_CHUNK }, slice))
+        sent += read
+        bytesDone += read
+        onProgress({
+          phase: 'send', filesDone: filesDone, filesTotal: entries.length,
+          bytesDone: bytesDone, bytesTotal: total, detail: entry.path
+        })
+        if (cancelled()) {
+          await link.send(frame({ t: T_ERROR, reason: 'cancelled' }))
+          throw new Error('已取消')
+        }
       }
+      await link.send(frame({ t: T_FILE_END, path: entry.path, size: entry.size }))
+      filesDone++
+    } finally {
+      fs.closeSync(source)
     }
+  }
 
-    await tcp.send({
-      data: frame({ t: T_DONE, files: filesDone, bytes: bytesDone })
-    })
-    onProgress({
-      phase: 'done', filesDone: filesDone, filesTotal: entries.length,
-      bytesDone: bytesDone, bytesTotal: total, detail: '发送完成'
-    })
-    return { files: filesDone, bytes: bytesDone, skipped: [] }
+  await link.send(frame({ t: T_DONE, files: filesDone, bytes: bytesDone }))
+  onProgress({
+    phase: 'done', filesDone: filesDone, filesTotal: entries.length,
+    bytesDone: bytesDone, bytesTotal: total, detail: '发送完成'
+  })
+  return { files: filesDone, bytes: bytesDone, skipped: [] }
+}
+
+/** Sender over TCP: connect, then run the shared sender. */
+export async function sendProject(
+  root: string,
+  entries: SyncEntry[],
+  host: string,
+  port: number,
+  code: string,
+  name: string,
+  sessionsJson: string,
+  onProgress: (progress: SyncProgress) => void,
+  cancelled: () => boolean
+): Promise<SyncReport> {
+  const tcp = socket.constructTCPSocketInstance()
+  await tcp.bind({ address: '0.0.0.0', port: 0, family: 1 })
+  await tcp.connect({ address: { address: host, port: port, family: 1 }, timeout: 8000 })
+  const link = new TcpSyncLink(null, tcp)
+  try {
+    return await sendProjectOver(link, root, entries, code, name, sessionsJson, onProgress, cancelled)
   } finally {
-    try {
-      tcp.off('message')
-    } catch (error) {
-      // Already gone.
-    }
-    try {
-      await tcp.close()
-    } catch (error) {
-      // Closing a dead socket is not news.
-    }
-    if (!accepted && denied.length === 0) {
-      // Caller gets the thrown error; nothing else to do here.
-    }
+    await link.close()
   }
 }
 
@@ -529,22 +612,234 @@ export function removeTree(path: string): void {
 }
 
 /**
- * Receiver: listen once, take one tree, move it in.
+ * Receiver, transport-neutral: frames in, one tree out.
  *
  * The code is checked against the sender's hello before a single byte is
- * written, and the incoming tree is assembled under cacheDir so a cancelled or
+ * written, and the incoming tree is assembled under `staging` so a cancelled or
  * broken transfer cannot leave half a project inside the workspace. Only after
  * the sender's `done` frame does anything move, file by file.
+ *
+ * The owning transport feeds bytes with `push` and reports a dropped peer with
+ * `peerClosed`; the session answers through the `send` callback it was given.
+ */
+export class SyncSession {
+  private targetRoot: string
+  private staging: string
+  private code: string
+  private sendFn: (bytes: ArrayBuffer) => Promise<void>
+  private onProgress: (progress: SyncProgress) => void
+  private onSessions: (json: string) => void
+  private onFinished: (report: SyncReport, error: string) => void
+  private reader: FrameReader = new FrameReader()
+  private pending: SyncFrameBox[] = []
+  private pumping: boolean = false
+  private finished: boolean = false
+  private report: SyncReport = { files: 0, bytes: 0, skipped: [] }
+  private entries: SyncEntry[] = []
+  private bytesDone: number = 0
+  private filesDone: number = 0
+  private sessionsJson: string = ''
+  private currentFile: fs.File | null = null
+  private currentPath: string = ''
+  private currentSize: number = 0
+  private currentWritten: number = 0
+
+  constructor(
+    targetRoot: string,
+    staging: string,
+    code: string,
+    sendFn: (bytes: ArrayBuffer) => Promise<void>,
+    onProgress: (progress: SyncProgress) => void,
+    onSessions: (json: string) => void,
+    onFinished: (report: SyncReport, error: string) => void
+  ) {
+    this.targetRoot = targetRoot
+    this.staging = staging
+    this.code = code
+    this.sendFn = sendFn
+    this.onProgress = onProgress
+    this.onSessions = onSessions
+    this.onFinished = onFinished
+  }
+
+  /** Feed bytes from the transport; frames are processed as they complete. */
+  async push(bytes: ArrayBuffer): Promise<void> {
+    this.reader.push(bytes)
+    let box = this.reader.next()
+    while (box !== null) {
+      this.pending.push(box)
+      box = this.reader.next()
+    }
+    await this.pump()
+  }
+
+  /** The peer went away before `done`. */
+  peerClosed(): void {
+    this.finish('对方中途断开')
+  }
+
+  private async pump(): Promise<void> {
+    if (this.pumping) {
+      return
+    }
+    this.pumping = true
+    try {
+      while (this.pending.length > 0 && !this.finished) {
+        const box = this.pending.shift() as SyncFrameBox
+        await this.handle(box)
+      }
+    } finally {
+      this.pumping = false
+    }
+  }
+
+  private async handle(box: SyncFrameBox): Promise<void> {
+    const header = box.header
+    const data = box.data
+    try {
+      if (header.t === T_HELLO) {
+        if (header.code !== this.code) {
+          await this.sendFn(frame({ t: T_DENY, reason: '配对码不对' }))
+          this.finish('配对码不对，已拒绝')
+          return
+        }
+        this.entries = header.entries === undefined ? [] : header.entries
+        let total = 0
+        for (const entry of this.entries) {
+          total += entry.size
+        }
+        await this.sendFn(frame({ t: T_ACCEPT }))
+        this.onProgress({
+          phase: 'receive', filesDone: 0, filesTotal: this.entries.length,
+          bytesDone: 0, bytesTotal: total, detail: '开始接收'
+        })
+        return
+      }
+      if (header.t === T_SESSIONS) {
+        if (data !== null) {
+          this.sessionsJson = decodeUtf8(new Uint8Array(data))
+        }
+        return
+      }
+      if (header.t === T_FILE) {
+        this.currentPath = header.path === undefined ? '' : header.path
+        this.currentSize = header.size === undefined ? 0 : header.size
+        this.currentWritten = 0
+        const full = resolveInside(this.staging, this.currentPath)
+        const parent = full.substring(0, full.lastIndexOf('/'))
+        if (!fs.accessSync(parent)) {
+          fs.mkdirSync(parent, true)
+        }
+        this.currentFile = fs.openSync(full,
+          fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC)
+        return
+      }
+      if (header.t === T_CHUNK) {
+        if (this.currentFile === null || data === null) {
+          this.finish('收到意外的数据块')
+          return
+        }
+        fs.writeSync(this.currentFile.fd, data)
+        this.currentWritten += data.byteLength
+        this.bytesDone += data.byteLength
+        this.onProgress({
+          phase: 'receive', filesDone: this.filesDone, filesTotal: this.entries.length,
+          bytesDone: this.bytesDone, bytesTotal: this.totalBytes(), detail: this.currentPath
+        })
+        return
+      }
+      if (header.t === T_FILE_END) {
+        if (this.currentFile !== null) {
+          fs.closeSync(this.currentFile)
+          this.currentFile = null
+        }
+        if (this.currentWritten !== this.currentSize) {
+          this.finish(`${this.currentPath} 大小不符（收到 ${this.currentWritten}，声明 ${this.currentSize}）`)
+          return
+        }
+        this.filesDone++
+        return
+      }
+      if (header.t === T_ERROR) {
+        this.finish(header.reason === undefined ? '对方中止了传输' : `对方中止：${header.reason}`)
+        return
+      }
+      if (header.t === T_DONE) {
+        this.finish('')
+        return
+      }
+    } catch (error) {
+      this.finish(`接收失败：${(error as Error).message}`)
+    }
+  }
+
+  private totalBytes(): number {
+    let total = 0
+    for (const entry of this.entries) {
+      total += entry.size
+    }
+    return total
+  }
+
+  private finish(error: string): void {
+    if (this.finished) {
+      return
+    }
+    this.finished = true
+    if (this.currentFile !== null) {
+      try {
+        fs.closeSync(this.currentFile)
+      } catch (closeError) {
+        // Best effort.
+      }
+      this.currentFile = null
+    }
+    if (error.length > 0) {
+      this.onFinished(this.report, error)
+      removeTree(this.staging)
+      return
+    }
+    // Move the tree in: every file has been written and size-checked.
+    try {
+      for (const entry of this.entries) {
+        const source = resolveInside(this.staging, entry.path)
+        const destination = resolveInside(this.targetRoot, entry.path)
+        const parent = destination.substring(0, destination.lastIndexOf('/'))
+        if (!fs.accessSync(parent)) {
+          fs.mkdirSync(parent, true)
+        }
+        if (fs.accessSync(destination)) {
+          // Overwriting silently could destroy work the user has not synced
+          // themselves; report it instead and let them decide.
+          this.report.skipped.push(entry.path)
+          continue
+        }
+        fs.renameSync(source, destination)
+        this.report.files = this.report.files + 1
+      }
+      this.report.bytes = this.bytesDone
+      if (this.sessionsJson.length > 0) {
+        this.onSessions(this.sessionsJson)
+      }
+      this.onFinished(this.report, '')
+    } catch (moveError) {
+      this.onFinished(this.report, `写入工作区失败：${(moveError as Error).message}`)
+    } finally {
+      removeTree(this.staging)
+    }
+  }
+}
+
+/**
+ * Receiver over TCP: listen once, hand the connection to a SyncSession.
+ *
+ * Nothing listens until the user opens receiving mode, and the listener closes
+ * after the single transfer so the port cannot become a standing invitation.
  */
 export class SyncReceiver {
   private server: socket.TCPSocketServer | null = null
   private conn: socket.TCPSocketConnection | null = null
-  private reader: FrameReader = new FrameReader()
   private code: string = ''
-  private targetRoot: string = ''
-  private staging: string = ''
-  private report: SyncReport = { files: 0, bytes: 0, skipped: [] }
-  private failure: string = ''
   private finished: boolean = false
 
   /** The code to show while waiting; set by `open`. */
@@ -552,12 +847,6 @@ export class SyncReceiver {
     return this.code
   }
 
-  /**
-   * Start listening. Resolves with the bound port.
-   *
-   * `onProgress` reports receiving progress; `onFinished` is called once when
-   * the tree has been moved into the workspace (or with the error text).
-   */
   async open(
     context: common.UIAbilityContext,
     targetRoot: string,
@@ -566,13 +855,10 @@ export class SyncReceiver {
     onFinished: (report: SyncReport, error: string) => void
   ): Promise<number> {
     await this.close()
-    this.targetRoot = targetRoot
-    this.staging = stagingDir(context)
-    removeTree(this.staging)
-    fs.mkdirSync(this.staging)
+    const staging = stagingDir(context)
+    removeTree(staging)
+    fs.mkdirSync(staging)
     this.code = makePairCode()
-    this.report = { files: 0, bytes: 0, skipped: [] }
-    this.failure = ''
     this.finished = false
 
     const server = socket.constructTCPSocketServerInstance()
@@ -585,13 +871,32 @@ export class SyncReceiver {
       await server.listen({ address: '0.0.0.0', port: port, family: 1 })
     }
     server.on('connect', (conn: socket.TCPSocketConnection) => {
-      this.attach(conn, onProgress, onSessions, onFinished)
+      this.conn = conn
+      const link = new TcpSyncLink(conn, null)
+      const session = new SyncSession(
+        targetRoot,
+        staging,
+        this.code,
+        (bytes: ArrayBuffer) => link.send(bytes),
+        onProgress,
+        onSessions,
+        (report: SyncReport, error: string) => {
+          this.finished = true
+          onFinished(report, error)
+          void this.close()
+        }
+      )
+      link.onBytes((bytes: ArrayBuffer) => {
+        void session.push(bytes)
+      })
+      link.onClosed(() => {
+        session.peerClosed()
+      })
     })
     this.server = server
     return port
   }
 
-  /** Stop listening and drop the connection; staging is cleared on next open. */
   async close(): Promise<void> {
     if (this.conn !== null) {
       try {
@@ -614,200 +919,5 @@ export class SyncReceiver {
       }
       this.server = null
     }
-  }
-
-  private attach(
-    conn: socket.TCPSocketConnection,
-    onProgress: (progress: SyncProgress) => void,
-    onSessions: (json: string) => void,
-    onFinished: (report: SyncReport, error: string) => void
-  ): void {
-    this.conn = conn
-    this.reader = new FrameReader()
-    conn.on('message', (info: socket.SocketMessageInfo) => {
-      this.reader.push(info.message)
-    })
-    conn.on('close', () => {
-      if (!this.finished) {
-        this.failure = 'peer closed'
-      }
-    })
-    let handshook = false
-    let entries: SyncEntry[] = []
-    let total = 0
-    let filesDone = 0
-    let bytesDone = 0
-    let sessionsJson = ''
-    let currentPath = ''
-    let currentSize = 0
-    let currentWritten = 0
-    let currentFile: fs.File | null = null
-    let currentFull = ''
-
-    const finish = (error: string): void => {
-      if (this.finished) {
-        return
-      }
-      this.finished = true
-      if (currentFile !== null) {
-        try {
-          fs.closeSync(currentFile)
-        } catch (closeError) {
-          // Best effort.
-        }
-        currentFile = null
-      }
-      if (error.length > 0) {
-        onFinished(this.report, error)
-        void this.close()
-        return
-      }
-      // Move the tree in: every file has been written and size-checked.
-      const moved: string[] = []
-      try {
-        for (const entry of entries) {
-          const source = resolveInside(this.staging, entry.path)
-          const destination = resolveInside(this.targetRoot, entry.path)
-          const parent = destination.substring(0, destination.lastIndexOf('/'))
-          if (!fs.accessSync(parent)) {
-            fs.mkdirSync(parent, true)
-          }
-          if (fs.accessSync(destination)) {
-            // Overwriting silently could destroy work the user has not synced
-            // themselves; report it instead and let them decide.
-            this.report.skipped.push(entry.path)
-            continue
-          }
-          fs.renameSync(source, destination)
-          moved.push(entry.path)
-        }
-        this.report.files = moved.length
-        this.report.bytes = bytesDone
-        if (sessionsJson.length > 0) {
-          onSessions(sessionsJson)
-        }
-        onFinished(this.report, '')
-      } catch (moveError) {
-        onFinished(this.report, `写入工作区失败：${(moveError as Error).message}`)
-      } finally {
-        removeTree(this.staging)
-        void this.close()
-      }
-    }
-
-    void (async (): Promise<void> => {
-      try {
-        for (;;) {
-          let next = this.reader.next()
-          while (next === null) {
-            const closing = await this.waitForData()
-            if (closing) {
-              finish('对方中途断开')
-              return
-            }
-            next = this.reader.next()
-          }
-          const header = next.header
-          const data = next.data
-          if (header.t === T_HELLO) {
-            if (header.code !== this.code) {
-              await conn.send({ data: frame({ t: T_DENY, reason: '配对码不对' }) })
-              finish('配对码不对，已拒绝')
-              return
-            }
-            entries = header.entries === undefined ? [] : header.entries
-            total = 0
-            for (const entry of entries) {
-              total += entry.size
-            }
-            handshook = true
-            await conn.send({ data: frame({ t: T_ACCEPT }) })
-            onProgress({
-              phase: 'receive', filesDone: 0, filesTotal: entries.length,
-              bytesDone: 0, bytesTotal: total, detail: '开始接收'
-            })
-            continue
-          }
-          if (!handshook) {
-            finish('对方没有先握手')
-            return
-          }
-          if (header.t === T_SESSIONS) {
-            if (data !== null) {
-              sessionsJson = decodeUtf8(new Uint8Array(data))
-            }
-            continue
-          }
-          if (header.t === T_FILE) {
-            currentPath = header.path === undefined ? '' : header.path
-            currentSize = header.size === undefined ? 0 : header.size
-            currentWritten = 0
-            currentFull = resolveInside(this.staging, currentPath)
-            const parent = currentFull.substring(0, currentFull.lastIndexOf('/'))
-            if (!fs.accessSync(parent)) {
-              fs.mkdirSync(parent, true)
-            }
-            currentFile = fs.openSync(currentFull,
-              fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC)
-            continue
-          }
-          if (header.t === T_CHUNK) {
-            if (currentFile === null || data === null) {
-              finish('收到意外的数据块')
-              return
-            }
-            fs.writeSync(currentFile.fd, data)
-            currentWritten += data.byteLength
-            bytesDone += data.byteLength
-            onProgress({
-              phase: 'receive', filesDone: filesDone, filesTotal: entries.length,
-              bytesDone: bytesDone, bytesTotal: total, detail: currentPath
-            })
-            continue
-          }
-          if (header.t === T_FILE_END) {
-            if (currentFile !== null) {
-              fs.closeSync(currentFile)
-              currentFile = null
-            }
-            if (currentWritten !== currentSize) {
-              finish(`${currentPath} 大小不符（收到 ${currentWritten}，声明 ${currentSize}）`)
-              return
-            }
-            filesDone++
-            continue
-          }
-          if (header.t === T_ERROR) {
-            finish(header.reason === undefined ? '对方中止了传输' : `对方中止：${header.reason}`)
-            return
-          }
-          if (header.t === T_DONE) {
-            finish('')
-            return
-          }
-        }
-      } catch (error) {
-        finish(`接收失败：${(error as Error).message}`)
-      }
-    })()
-  }
-
-  /**
-   * Wait until more bytes arrive on the connection.
-   *
-   * The socket reader pushes into `reader`; this polls the connection's own
-   * buffer by attempting a read every 50 ms. Resolves true when the peer is gone.
-   */
-  private async waitForData(): Promise<boolean> {
-    for (let i = 0; i < 600; i++) {
-      if (this.failure.length > 0) {
-        return true
-      }
-      if (this.reader.hasFrame()) {
-        return false
-      }
-      await new Promise<void>((resolve) => setTimeout(resolve, 50))
-    }
-    return true
   }
 }

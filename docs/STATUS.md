@@ -7,6 +7,16 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 >
+- **项目同步：传输层抽成 `SyncLink` + 设备内 loopback 回归，星闪适配就位（2026-11-23 14:30，手机 CMM-AL10）**。
+  `ProjectSync.ets` 拆成 `SyncLink`（send/close/onBytes/onClosed）+ `SyncSession`（收帧、配对码、staging→rename），
+  TCP 只是其中一个实现；星闪链路 `common/NearLinkSync.ets`（scan / connect+writeData / createPort+startAdvertising）
+  与 UI 的「传输：WiFi 直连 / 星闪」已接上，两台设备都报 `canIUse(SystemCapability.Communication.NearLink.Core)` 为真。
+  **验证方式换了**：两台设备同时操作 UI 的自动化点击不稳定（设置面板被反复关掉），所以把「协议两半是否对得上」
+  做成设备内 loopback 测试 `entry/src/ohosTest/ets/test/ProjectSync.test.ets`，进 `bash scripts/test.sh device`：
+  接收端监听 127.0.0.1、发送端连过去，断言 2 文件 + **4096/22 字节**（staging 写空文件也能过文件数断言，所以查字节）；
+  第二条用错码，断言发送端抛错、接收端报「配对码不对」、目标目录零文件。本轮实测 **3 个用例全过**。
+  星闪**字节通道尚未双机跑通**（需要两台设备同时开收发，见 `docs/PROJECT-SYNC.md` §6），只验到端口/广告/扫描这条腿。
+
 > 载荷里的 `payload/docs/` 是构建期快照（`assemble-payload.mjs` 的 `stageDocs()` 拷 `docs/*.md`），
 > 权威副本始终是本文件。
 

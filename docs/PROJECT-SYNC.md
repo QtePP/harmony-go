@@ -80,6 +80,12 @@ Mac 上跑仓库里的 `scripts/sync-peer.mjs` 做对端：
 帧会被当成损坏——三条 framing 单测一开始全红就是这个原因。现在 `FrameReader` 有 3 条单测
 （跨读拼帧 / 一次读多帧 / 长度字段异常），协议在设备外也可测。
 
+**设备内 loopback 回归**（`entry/src/ohosTest/ets/test/ProjectSync.test.ets`，进
+`bash scripts/test.sh device`）：同一台设备上让接收端监听 127.0.0.1、发送端连过去跑完整流程，
+断言文件数与**字节数**（staging 里写成空文件也能通过文件数断言，所以这里查 4096 与 22 字节）；
+第二条用例用错配对码，断言发送端抛错、接收端报「配对码不对」、目标目录**一个文件都没有**。
+这条测试是「协议两半真的能对上」的自动化证据，也是改传输层的回归网。
+
 ## 5. 电脑端（`scripts/sync-peer.mjs`）
 
 电脑不是客户端，但它是**接收方**——手机 → Mac 传文件靠这个脚本，零依赖，只要 Node。
@@ -104,9 +110,25 @@ node scripts/sync-peer.mjs watch ./project                              # 只预
 ②`currentRel` 是共享状态，在异步回调里读到的是下一个文件 ⇒ **三个文件全记成最后一个的名字**。
 两者都不会报错，只有比对 MD5 才发现——所以电脑端现在也有测试，且并进了 `bash scripts/test.sh unit`。
 
-## 6. 还没做
+## 6. 星闪（第二条传输，同一套协议）
 
-- **星闪传输**：协议与传输已解耦，接星闪只需实现 `scan → connect → writeData/on('readData') → disconnect`
-  这套适配；但要在两台支持星闪且都装了本应用的设备上验，当前只有一台。
+WiFi 直连要求两台设备在同一网段；星闪（NearLink）是近场链路，不需要路由器。协议**一行没改**：
+`ProjectSync.ets` 现在把传输抽成 `SyncLink`（`send/close/onBytes/onClosed`）+ `SyncSession`
+（收帧/落盘/配对码校验，与传输无关），TCP 与星闪只是两个实现。
+
+- `common/NearLinkSync.ets`：`nearLinkSyncSupported()`（`canIUse(SystemCapability.Communication.NearLink.Core)`）、
+  `scanNearLinkPeers(ms)`（`scan.startScan(null, …)` + `deviceFound` 去重）、`NearLinkSyncLink`
+  （`connect({address,uuid,mtu:65535})` → `writeData` 每帧 → `readData` 喂给 FrameReader）、
+  `NearLinkSyncReceiver`（`createPort(uuid)` + `startAdvertising`，第一包决定对端地址，回帧走 `writeData`）。
+- 服务 uuid 固定 `7D5F6A2C-1B8E-4C3A-9F10-2A6B7C8D9E01`；分片仍 32KB（≤65535 的端口 MTU）。
+- UI：项目同步面板里多一行「传输：WiFi 直连 / 星闪」，只在 `nearLinkSyncSupported()` 为真时出现；
+  星闪发送要「搜索附近设备」选一台，星闪接收打开广告后等对方连；配对码仍然是协议层那道门。
+- **状态（诚实）**：端口/广告/扫描这条腿在两台设备上都能开（两台都报 `canIUse` 为真、面板都出现
+  传输选择），但**两台设备之间的字节通道尚未真机跑通**——星闪对传需要两台设备同时操作 UI，
+  这次会话里自动化点击把设置面板反复关掉，没能在两台设备上同时开好收发。代码就位，
+  验收待一次稳定的人工/自动化双机操作。
+
+## 7. 还没做
+
 - **断点续传 / 冲突合并**：v1 用「整棵树 staging + 不覆盖」换确定性；重传从头开始。
 - **加密与身份**：v1 靠配对码 + 局域网范围。

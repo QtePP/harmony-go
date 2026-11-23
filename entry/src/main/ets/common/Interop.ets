@@ -409,7 +409,7 @@ export interface ProbeResult {
  * The system shows nothing when the answer is already yes, so a denied
  * permission surfaces as false rather than as a dialog on every tap.
  */
-async function requestNearLinkPermission(context: common.UIAbilityContext): Promise<boolean> {
+export async function requestNearLinkPermission(context: common.UIAbilityContext): Promise<boolean> {
   try {
     const manager = abilityAccessCtrl.createAtManager()
     const result = await manager.requestPermissionsFromUser(context, ['ohos.permission.ACCESS_NEARLINK'])
