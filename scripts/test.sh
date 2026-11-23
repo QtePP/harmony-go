@@ -148,6 +148,22 @@ suite_unit() {
       fi
     fi
   done
+
+  # The computer-side sync peer is not part of the payload, but it speaks the
+  # device's protocol and it writes files, so it gets the same treatment. Two
+  # silent-corruption bugs lived here (files arriving 0 bytes, every file
+  # recorded under the last name) — a demo passed while the data was wrong.
+  if [ -f "$ROOT/scripts/sync-peer.test.mjs" ]; then
+    local pout
+    pout=$( cd "$ROOT" && node --test scripts/sync-peer.test.mjs 2>&1 )
+    if [ $? -eq 0 ]; then
+      local pn; pn=$(printf '%s\n' "$pout" | grep -E '(^ℹ|^#) pass [0-9]+' | grep -oE '[0-9]+' | tail -1)
+      ok "sync-peer ${pn:+($pn 通过)}"
+    else
+      bad "sync-peer"
+      printf '%s\n' "$pout" | grep -E '^not ok|^✖|(^ℹ|^#) fail' | head -8
+    fi
+  fi
 }
 
 suite_arkts() {

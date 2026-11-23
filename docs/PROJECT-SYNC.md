@@ -66,7 +66,31 @@ Mac 上跑仓库里的 `scripts/sync-peer.mjs` 做对端：
   `session.<id>` 与索引行）。**只带本地缓存消息**：dsh 的服务端日志（`session.v4.jsonl.zstd`）
   不随行，所以接收端 `resume` 会新建服务端会话，这是 v1 的边界。
 
-## 5. 还没做
+## 5. 电脑端（`scripts/sync-peer.mjs`）
+
+电脑不是客户端，但它是**接收方**——手机 → Mac 传文件靠这个脚本，零依赖，只要 Node。
+
+```bash
+# Mac 接收（先跑这个，把打印出的局域网地址填进设备）
+node scripts/sync-peer.mjs receive 4519 123456 ~/Downloads/from-phone
+
+# Mac 发送（设备端先点「接收」，把配对码给它）
+node scripts/sync-peer.mjs send 192.168.1.20:4519 123456 ./project Mac
+node scripts/sync-peer.mjs send <addr> <code> <dir> Mac sessions.json   # 连带会话
+node scripts/sync-peer.mjs watch ./project                              # 只预览清单，不发
+```
+
+它**不信任发送方**，与设备端执行同一套规则：路径含 `..` / `.` / 空段 / 绝对路径一律拒绝；
+整棵树先落 staging、全部到齐并核对大小后才 `rename` 进目标；**同名文件跳过不覆盖**。
+安全性质靠 `scripts/sync-peer.test.mjs` 8 条钉住（含在**真实接收器**上重放穿越清单，确认目标
+内外都没有文件落地）。
+
+**这里曾经有两个「报告成功但数据是错的」bug**（2026-11-23，都已修）：
+①`stream.end()` 异步，紧跟的 `commit()` 在 flush 前就 `rename` ⇒ **每个收到的文件都是 0 字节**；
+②`currentRel` 是共享状态，在异步回调里读到的是下一个文件 ⇒ **三个文件全记成最后一个的名字**。
+两者都不会报错，只有比对 MD5 才发现——所以电脑端现在也有测试，且并进了 `bash scripts/test.sh unit`。
+
+## 6. 还没做
 
 - **星闪传输**：协议与传输已解耦，接星闪只需实现 `scan → connect → writeData/on('readData') → disconnect`
   这套适配；但要在两台支持星闪且都装了本应用的设备上验，当前只有一台。
