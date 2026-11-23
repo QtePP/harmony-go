@@ -76,7 +76,9 @@
   所以 `host/bootstrap.cjs` 在开机时**只在该文件不存在时**写一份四行事实：没有 shell（bash/pwsh/jobs 未注册）、
   文件工具只能进工作区、仓库落在 `repos/<owner>-<name>`、push 的 token 由 git 工具自己从 `dsh-home/.git-token` 读。
   **不覆盖**已有文件——同一个文件是 `@ohos/dsh-tool-user-profile` 的受管区块所在地，每次启动重写会把用户画像抹掉。
-  证据：手机 `dsh-home/AGENTS.md` 782 B、0600（`bridge.log` 有 `instructions: seeded platform notes into AGENTS.md`）；
+  证据：手机 `dsh-home/AGENTS.md` 782 B、**0600**，平板同大小但落成 **0644**（同一份代码 —— 与 `.git-token` 那个
+  「`chmodSync` 在某些文件上静默失效」是同源问题；内容不含密钥，只是可被其他应用读到）；`bridge.log` 有
+  `instructions: seeded platform notes into AGENTS.md`；
   指令候选清单与 `$DSH_HOME/AGENTS.md` 的 user-global 判定都在插件源码里核实过。**行为效果要看下一次新会话**，
   本轮没在真机上跑一轮完整对话去对比（上一次跑的时候 UI 自动化又把点击吃掉了）。
 
