@@ -1,5 +1,6 @@
 import { common, ConfigurationConstant } from '@kit.AbilityKit'
 import { preferences } from '@kit.ArkData'
+import { normalizeModelId } from './ModelCatalog'
 import { util } from '@kit.ArkTS'
 import { BusinessError } from '@kit.BasicServicesKit'
 import { fileIo as fs } from '@kit.CoreFileKit'
@@ -40,6 +41,19 @@ export class AppConfig {
   static readonly APPEARANCE_SYSTEM: string = 'system'
   static readonly APPEARANCE_LIGHT: string = 'light'
   static readonly APPEARANCE_DARK: string = 'dark'
+
+  /**
+   * Canonical model id.
+   *
+   * A blank choice means "not chosen yet" and falls back to the shipped
+   * default; a legacy id (`deepseek-v4-flash`) is rewritten to the id the
+   * provider catalog declares. Both doors matter: `load` fixes a stored value,
+   * `save` keeps a stale one from being written again.
+   */
+  static normalizeModel(model: string): string {
+    const normalized = normalizeModelId(model)
+    return normalized.length === 0 ? AppConfig.MODEL : normalized
+  }
 
   /** Named presets shipped by dsh (dsh-base cordis.patch.yml): sandbox + approval bundled. */
   static normalizePermissionMode(mode: string): string {
@@ -83,14 +97,20 @@ export class AppConfig {
     AppConfig.store = await preferences.getPreferences(context, AppConfig.STORE)
     const saved = await AppConfig.store.get('api_key', '') as string
     const token = await AppConfig.store.get('git_token', '') as string
-    const model = await AppConfig.store.get('model', AppConfig.MODEL) as string
+    const storedModel = await AppConfig.store.get('model', AppConfig.MODEL) as string
     const profile = await AppConfig.store.get('profile', AppConfig.PROFILE_SDK) as string
     const prompted = await AppConfig.store.get('profile_prompted', false) as boolean
     const permission = await AppConfig.store.get('permission_mode', AppConfig.PERMISSION_WORKSPACE) as string
     const accent = await AppConfig.store.get('accent', 'blue') as string
     const appearance = await AppConfig.store.get('appearance', AppConfig.APPEARANCE_SYSTEM) as string
     const fontLevel = await AppConfig.store.get('font_level', 'standard') as string
-    AppConfig.model = model.length === 0 ? AppConfig.MODEL : model
+    AppConfig.model = AppConfig.normalizeModel(storedModel)
+    if (AppConfig.model !== storedModel) {
+      // Persist the rewrite once: otherwise every boot keeps reading an id the
+      // provider rejects, and the fix would only hold for this process.
+      await AppConfig.store.put('model', AppConfig.model)
+      await AppConfig.store.flush()
+    }
     AppConfig.profile = profile === AppConfig.PROFILE_ACP ? AppConfig.PROFILE_ACP : AppConfig.PROFILE_SDK
     AppConfig.profilePrompted = prompted
     AppConfig.permissionMode = AppConfig.normalizePermissionMode(permission)
@@ -112,7 +132,7 @@ export class AppConfig {
     if (gitToken !== undefined) {
       AppConfig.gitToken = gitToken.trim()
     }
-    AppConfig.model = model.trim().length === 0 ? AppConfig.MODEL : model.trim()
+    AppConfig.model = AppConfig.normalizeModel(model)
     if (AppConfig.store === null) {
       AppConfig.store = await preferences.getPreferences(context, AppConfig.STORE)
     }

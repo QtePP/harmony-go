@@ -48,6 +48,12 @@
   （列表是用来帮人选的，不该变成新的锁死方式）。默认值改为 `deepseek-flash`，只在拉取成功前兜底。
   `modelsFromBody()` 是纯函数，4 条单测（名称回落 id、无 id 丢弃、重复去重、空/坏 body 返回空）。
   **边界**：列表来自账号，不是随包发布；ACP 的会话内选择器仍以 `configOptions` 为权威（两者一致）。
+  **旧值会被改写**：`deepseek-v4-flash` 当过出厂默认，那段时间点过「保存」的设备 preferences 里都留着它；
+  `AppConfig.load()` 现在用 `normalizeModelId()` 把它规范化并**回写一次**，所以老用户升级后第一次启动就换掉，
+  `initialize` 不再送这个 id（`save()` 同样规范化，避免旧值被再写回去）。`normalizeModelId` 另有 2 条单测。
+  真机实证（同一台手机）：临时构建把 preferences 写成 `deepseek-v4-flash`（模拟老用户）→ 装正式构建 →
+  启动后 `dsh_settings` 变成 `deepseek-flash`；设置页选 `deepseek-v4-pro` → 保存 → preferences 变
+  `deepseek-v4-pro`；再选回 flash → 保存 → 落盘为 `deepseek-flash`。
 
 - **GitHub token 可在设置页填，`push` 能读到（真机验成）**：新增「GitHub Token（用于 git push）」输入框，
   存 preferences 并镜像到 `dsh-home/.git-token`。设备实证：输入 → 点「保存」→ `stat` 到

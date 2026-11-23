@@ -10,7 +10,7 @@ import { decodeEnvelope, encodeEnvelope, keepRemainder, makeEnvelope, takeLines 
 import { compactCount, dayKey, mergeUsage, usageTotal, UsageDay } from '../main/ets/model/Usage';
 import { spokenForm } from '../main/ets/common/ReadAloud';
 import { extOf, fallbackUtd, nameOf } from '../main/ets/common/FileShare';
-import { modelsFromBody, ModelEntry } from '../main/ets/common/ModelCatalog';
+import { modelsFromBody, ModelEntry, normalizeModelId } from '../main/ets/common/ModelCatalog';
 
 /**
  * Tests for the pure projections and formatters.
@@ -429,6 +429,21 @@ export default function localUnitTest() {
       expect(modelsFromBody('not json').length).assertEqual(0);
       expect(modelsFromBody('{"data":{}}').length).assertEqual(0);
       expect(modelsFromBody('{"error":"invalid key"}').length).assertEqual(0);
+    });
+
+    // The fake id was the shipped default for a month, so devices that saved
+    // settings in that window still carry it; load rewrites it once and stores
+    // the result, which is what keeps initialize from sending it again.
+    it('rewrites the model id older builds saved', 0, () => {
+      expect(normalizeModelId('deepseek-v4-flash')).assertEqual('deepseek-flash');
+      expect(normalizeModelId('  deepseek-v4-flash ')).assertEqual('deepseek-flash');
+    });
+
+    it('leaves real and unknown ids alone', 0, () => {
+      expect(normalizeModelId('deepseek-flash')).assertEqual('deepseek-flash');
+      expect(normalizeModelId('deepseek-v4-pro')).assertEqual('deepseek-v4-pro');
+      expect(normalizeModelId('vendor/some-model')).assertEqual('vendor/some-model');
+      expect(normalizeModelId('')).assertEqual('');
     });
   });
 

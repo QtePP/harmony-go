@@ -16,6 +16,30 @@ import { http } from '@kit.NetworkKit'
  */
 export const MODELS_URL: string = 'https://api.deepseek.com/models'
 
+/**
+ * Ids that older builds wrote and the provider catalog does not declare.
+ *
+ * `deepseek-v4-flash` was this app's default for a month, and Settings offered
+ * a free-text field on top of that, so a saved settings blob from that window
+ * can carry an id `initialize` must reject. Rewriting on load is the only fix
+ * that reaches someone who never opens Settings again.
+ */
+const LEGACY_MODEL_IDS: Record<string, string> = {
+  'deepseek-v4-flash': 'deepseek-flash'
+}
+
+/**
+ * Rewrite a legacy model id; anything unrecognized passes through.
+ *
+ * Blank stays blank so callers can keep their own fallback: the picker and the
+ * saved default answer that question differently.
+ */
+export function normalizeModelId(id: string): string {
+  const trimmed = id.trim()
+  const mapped = LEGACY_MODEL_IDS[trimmed]
+  return mapped === undefined ? trimmed : mapped
+}
+
 /** One selectable model, reduced to what the picker renders. */
 export class ModelEntry {
   id: string = ''
