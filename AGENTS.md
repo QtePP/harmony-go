@@ -198,7 +198,7 @@ ACP 实测契约（勿凭直觉改）：
 | 双 profile | SDK 5 方法（兼容路径）/ ACP 9 方法（首启引导推荐）；首启问一次，答案决定当次启动 |
 | 对话体验 | 流式气泡 + 思考折叠 + 工具轨迹、插话队列、待办条 / 目标条、上下文小环、重新回答、完成摘要 |
 | 会话管理 | 列表 / 标题与内容搜索、置顶、归档、多选批量归档、未读标记、每轮用量账本、详情页、导出 |
-| 文件与产物 | 预览（网页 / 图片 / 文本）、`@` 引用、图片存相册、分享卡、导出 Markdown；**长按文件 → 分享到其他应用**（系统 ShareKit，类型先查 UTD、查不到落静态表）；**项目文件同步**（WiFi 直连：manifest + 32KB 分片 + staging 原子落盘 + 配对码，经 `hdc fport` 与宿主机对端双向验成；**两台真机之间**的直传仍待人工点左右一下，见 `docs/PROJECT-SYNC.md` §4 与 `docs/STATUS.md` 2026-11-23 条） |
+| 文件与产物 | 预览（网页 / 图片 / 文本）、`@` 引用、图片存相册、分享卡、导出 Markdown；**长按文件 → 分享到其他应用**（系统 ShareKit，类型先查 UTD、查不到落静态表）；**项目文件同步 + 会话同步**（manifest + 分片 + staging 原子落盘 + 配对码；TCP 经 `hdc fport` 与宿主机对端双向验成；**星闪（NearLink）双机端到端验成**：手机 → 平板 17B 文本 + 40000B 二进制完整落地，两端用例 4/4，见 `docs/PROJECT-SYNC.md` §4/§6 与 `docs/STATUS.md` 2026-11-23 条） |
 | 输入与外观 | 语音输入 / 朗读（**离线引擎真机验成**：识别引擎加载模型、朗读出声；`CreateEngineParams.online` 必须是 `1`=离线，写 `0` 会以 `1002200001` 失败）、六套主题色、外观三档、对话字号四档 |
 | 沙箱与审批 | 四层沙箱 + 权限三档（只读 / 平衡 / 宽松），三档均真机闭环 |
 | 联网与仓库 | `web_search` 走服务端 Messages 搜索；`git` 纯 JS clone/snapshot/pull/log/diff/status/**commit**/**push**（父链自解析、`force` 重置、传输中途限流、跟随设备系统代理），真机端到端走过超时重试；`push` 的 token 在设置页填，写 `dsh-home/.git-token`（**不进 env**；0600 收紧未证实，见 STATUS） |
@@ -319,7 +319,7 @@ ACP 实测契约（勿凭直觉改）：
 | `docs/ARCHITECTURE.md` | **架构权威文本**（2026-11-20 重写）：进程剖面、运行时五条硬事实、宿主适配层三段（含十个垫片与三份 YAML）、SDK/ACP 双 profile 对照与契约摘要、事件渲染映射、沙箱四层、平台约束十条、已知边界。排版版 `docs/on-device-architecture.html`。逐行走读看 `BOOT.md`，协议矩阵看 `SPIKE-ACP.md` |
 | `docs/BREAKTHROUGHS.md` | **突破清单 + 代价**：四条判据（平台说不行/无方案可抄/真机闭环/用户可感知）筛出的六件平台级突破——同进程 Node、进程内 ACP、jitless fetch、自定义 profile、三条降级链、可观测性，每件带证据与代价；另含协议契约、方法论、以及诚实的「什么不算突破」。排版版 `docs/breakthroughs.html`（与 `docs/on-device-architecture.html` 同一套设计，后者讲「现在长什么样」，前者讲「哪些是硬啃下来的」） |
 | `docs/BOOT.md` | **启动链路走读**：点开图标 → EntryAbility → NodeHost.boot → dlopen/node::Start → bootstrap.cjs 十个垫片 → runCli/profile 挂载；含「哪些脚本在什么时候跑」的分类表与 6 个文件的阅读顺序 |
-| `docs/PROJECT-SYNC.md` | **项目文件同步**：能做什么、线协议（分帧/manifest/分片/背压）、安全边界（配对码、只写工作区、不覆盖）、真机双向取证、尚未做的（星闪 transport / 会话同步 / 断点续传 / 加密） |
+| `docs/PROJECT-SYNC.md` | **项目同步**：能做什么（文件 + 可选会话，两条传输）、线协议（分帧/manifest/分片/背压/ack）、安全边界（配对码、只写工作区、不覆盖）、TCP 与星闪的真机取证与踩坑、尚未做的（断点续传 / 加密） |
 | `docs/BUILD.md` | 构建、签名、装机、排障（含受限环境坑） |
 | `docs/ROADMAP.md` | 路线图：ACP 切换评估（流式/审批/取消）等 |
 | `docs/PLUGIN-MIGRATION.md` | 客户端插件迁移分级（P0/P1/P2/不迁） |
