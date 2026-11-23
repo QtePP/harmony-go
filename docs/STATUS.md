@@ -69,6 +69,24 @@
   `manager.getPairedDevices()` 的地址）再验字节通道。为此新增的测试用例默认无 `role` 参数时直接通过，
   不拖累 `bash scripts/test.sh device`。
 
+- **轨迹里的「失败」逐条查清了：四条都不是工具坏了（2026-11-23 17:15–17:35，手机 CMM-AL10）**。
+  用户报：git clone/push 那一轮轨迹里有失败。把设备上的 `preferences/dsh_sessions` 拉下来逐条读，真实文案是：
+  ① `调用 git` → `repos/qtepp-harmony-go is not cloned yet; use action "clone" or "snapshot"`（模型先问 status、后 clone，时序错）；
+  ② `执行 bash` → `unknown tool "bash"`（平台补丁把 `tool-bash` 关了，模型照自己习惯叫了一次）；
+  ③ `查找 glob /data/storage/el2/base/haps/entry/files` → `glob path escapes the session workspace`（它在工作区外找 token）；
+  ④ `读取 …/.git/packed-refs` → `not found`（clone 出来的 refs 没打包，这个文件本来就不存在）。
+  另一条会话里还有 `git → Error: tool call aborted`——那一轮被中断，是 dsh 自己的收尾文案。
+  **都不是「工具挂了」**，但轨迹只写「失败」，用户只能这么理解。改了三处：
+  - **轨迹行**：失败时折叠行显示**失败原因**（取 `output` 首行、去掉 `Error: ` 前缀），不再是参数 JSON ——
+    现在一眼看到 `repos/qtepp-harmony-go is …` / `unknown tool "bash"`，不用展开；
+  - **git 工具的 action 清单漏了 `commit | push`**（描述里却在讲 push 要 token）：补全，并写明 token 由工具自己从
+    `<dsh-home>/.git-token` 读、没有 shell 可查。载荷已重建（`assemble-payload.mjs --skip-install`），
+    git 用例 **49/49** 仍全绿；
+  - `AGENTS.md` §4.2 纠错：原文「bash 工具存在但必然失败」是错的，实际是**根本没注册**。
+  真机验证：手机重新解包载荷（`payload.stamp` 239930689 → 239948646，`grep` 确认新描述已在设备树上）后，
+  轨迹里那两行从 `{"action":"status",…}` / `ls -la ~/.git-token …` 变成
+  `repos/qtepp-harmony-go is …` 与 `unknown tool "bash"`。
+
 - **克隆仓库里的文件点不开：「它不在当前项目的可访问目录内」（2026-11-23 17:10–17:25，手机 CMM-AL10）**。
   现象（用户报）：消息里的 `docs/STATUS.md` 引用、以及「产物」卡片，点了打不开，提示找不到；
   文件当时就在设备上（`hdc find` 实查：`files/workspace/repos/qtepp-harmony-go/docs/STATUS.md` 与

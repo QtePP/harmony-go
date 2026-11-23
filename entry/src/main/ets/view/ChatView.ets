@@ -732,10 +732,22 @@ struct TraceEntryRow {
     return this.failed() ? 'rgba(192,57,43,0.07)' : kindTint(this.kind())
   }
 
+  /**
+   * One line under the row title.
+   *
+   * For a failed call the *reason* is the useful line, not the arguments: the
+   * arguments are what the model meant to do, and a row that only says 失败
+   * sends the reader into the expanded payload to find out why. dsh puts the
+   * failure text in `output`, so prefer that (its first non-empty line, with
+   * the `Error: ` prefix stripped since the row already reads 失败).
+   */
   private summary(): string {
-    const lines = this.entry.input.split('\n')
-    for (const line of lines) {
-      const flat = line.trim()
+    const source = this.failed() && this.entry.output.length > 0 ? this.entry.output : this.entry.input
+    for (const line of source.split('\n')) {
+      let flat = line.trim()
+      if (flat.startsWith('Error: ')) {
+        flat = flat.substring('Error: '.length)
+      }
       if (flat.length > 0) {
         return flat
       }

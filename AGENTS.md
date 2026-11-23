@@ -149,7 +149,9 @@ ACP 实测契约（勿凭直觉改）：
   （`a prompt is already in flight for this session`，`packages/acp/acp/src/session.ts`），
   ACP 没有 steering 通道 ⇒ **「插话」在 ACP 下不可得**，客户端只能排队、回合结束
   （含 `session/cancel` 触发的 `cancelled`）后续发。别按 dsh-go 的 Web API 语义实现插话。
-- 该 profile 下 `bash` 工具存在但必然失败（无 exec），属平台限制。
+- 该 profile 下 **`bash` 根本没有注册**（平台补丁把 `tool-bash` 设为 `disabled: true`，`--dump-config` 可验），
+  模型如果照着自己的习惯去调，拿到的是 `unknown tool "bash"`——不是「命令执行失败」，别按「无 exec 所以失败」理解。
+  同理 `~/.git-token` 这类家目录路径在沙箱外，`glob`/`read` 会报 `escapes the session workspace` / `not found`。
 
 ## 5. 平台硬约束（六条，各有对策）
 
