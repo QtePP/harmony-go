@@ -12,6 +12,12 @@
 
 ---
 
+- **模型自主跑完 `clone` → 改文件 → `commit` → `push`（2026-11-23，本会话）**：`git` 工具以
+  `force: true` 克隆 `QtePP/harmony-go` 到 `repos/qtepp-harmony-go`，改本文件后 `commit`，
+  再 `push` 到新分支 `xxx`（先在 `.git/refs/heads/` 落同名分支，`force: true` 发布）。
+  全程只用文件工具与 git 工具，无 shell、无宿主机协助——补上了上一条里
+  「真机上由模型完成 `push` 完整回合」未验的部分。
+
 - **`push` 已用真 token 验成；顺手修了两个真 bug（2026-11-23，手机 CMM-AL10 / HarmonyGo）**。
   用户在设置页填入真实细粒度 PAT（`QtePP`，对 `QtePP/harmony-go` 有 `admin/push`）。设备侧
   `.git-token` 落盘 **93 字节**（= token 长度），说明「设置页 → 文件」这条链真的通了。
