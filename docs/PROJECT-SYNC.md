@@ -132,12 +132,19 @@ WiFi 直连要求两台设备在同一网段；星闪（NearLink）是近场链�
     `keys=[-b,-m,-s role,-s timeout,-s unittest,moduleName]`），不是裸 `role`。
   - `scan` 侧确实扫到了对端：`NEARLINK-PEER 70:1D:79:0D:23:A9 name=niika的MatePad Mini 悦读版 rssi=-57`，
     说明发现/广告是通的。
-  - 用该地址 `dataTransfer.connect({address, uuid, mtu:65535})` 直接抛 **`Operation failed.`**；
-    同一时刻 nearlink_service 日志是 `GetEncryptAddr:31 addr is invalid`（扫描返回的是被加密/解析过的
-    地址，connect 需要的是可解析的身份地址，或需先在系统设置里完成星闪配对）。
-  - 所以下一步不是改协议，而是：两台设备先在系统里配对（或改用 `manager.getPairedDevices()` 返回的
-    地址去连），再验证 `connect → writeData/readData`；协议与 UI 侧已就位，`SyncSession` 与 TCP
-    共用同一份收帧/落盘/配对码逻辑，设备内 loopback 用例已把这份逻辑钉住（`ProjectSync.test.ets`）。
+  - 一开始 `dataTransfer.connect()` 直接抛 `1009700099 Operation failed.`；怀疑过配对（实测两台
+    `getPairingState() === PAIRING_STATE_PAIRED (3)`，排除）、地址过期（同一次 run 内重新扫描，
+    地址与上次相同 `70:1D:…`，排除）、包大小（`mtu` 512 与 65535 都失败，排除）、时序
+    （20 次 × 2s 重试全失败，排除）。
+  - **真正的原因是发送端没有自己的端口**：`dataTransfer.createPort(uuid)` 原来只在接收端调用。
+    补上之后 `connect()` **成功**，错误从 `Operation failed.`（连接被拒）变成
+    `对方没有回应（可能不在接收模式）`（连接建立、hello 已发出、但接收端没回 accept）。
+  - 下一步是接收端为什么收不到/不回：`readData` 在接收端没有触发，怀疑接收端也需要在
+    `connectionStateChanged` 里拿到对端地址、或接收端的 `writeData` 需要显式 `connect` 回去。
+    接收端诊断日志这一轮没取到（测试进程的 `filesDir` 指向 `haps/entry_test/files`，该目录不存在，
+    写盘被静默 catch 吞掉），下轮先修诊断通道再定位。
+  - 协议与 UI 侧已就位：`SyncSession` 与 TCP 共用同一份收帧/落盘/配对码逻辑，设备内 loopback
+    用例已把这份逻辑钉住（`ProjectSync.test.ets`）。
 
 ## 7. 还没做
 

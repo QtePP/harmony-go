@@ -111,6 +111,7 @@ export class NearLinkSyncLink implements SyncLink {
   private bytesHandler: ((bytes: ArrayBuffer) => void) | null = null
   private closedHandler: (() => void) | null = null
   private connected: boolean = false
+  private portOpen: boolean = false
   private readonly onRead = (params: dataTransfer.DataParams): void => {
     if (params.address !== this.address || this.bytesHandler === null) {
       return
@@ -131,11 +132,28 @@ export class NearLinkSyncLink implements SyncLink {
     this.address = address
   }
 
-  /** Establish the port channel; pairing may show a system dialog. */
-  async connect(): Promise<void> {
+  /**
+   * Establish the port channel.
+   *
+   * `mtu` is a parameter because the handshake is the one thing that failed
+   * on real hardware before the byte path could be tried: asking for the
+   * maximum packet size can be refused outright, while a small one goes
+   * through. The protocol's frame size must then stay under whatever was
+   * negotiated.
+   */
+  async connect(mtu: number = NEARLINK_MTU): Promise<void> {
+    // Both ends own the port: the receiver advertises it, and the sender has to
+    // have it open locally too before the channel can be established —
+    // connecting without it failed with 1009700099 on hardware.
+    try {
+      dataTransfer.createPort(NEARLINK_SYNC_UUID)
+      this.portOpen = true
+    } catch (error) {
+      // Already created by an earlier attempt; the connect below decides.
+    }
     dataTransfer.on('readData', this.onRead)
     dataTransfer.on('connectionStateChanged', this.onState)
-    await dataTransfer.connect({ address: this.address, uuid: NEARLINK_SYNC_UUID, mtu: NEARLINK_MTU })
+    await dataTransfer.connect({ address: this.address, uuid: NEARLINK_SYNC_UUID, mtu: mtu })
     this.connected = true
   }
 
@@ -171,6 +189,14 @@ export class NearLinkSyncLink implements SyncLink {
         // Already gone.
       }
       this.connected = false
+    }
+    if (this.portOpen) {
+      try {
+        dataTransfer.destroyPort(NEARLINK_SYNC_UUID)
+      } catch (error) {
+        // Already destroyed.
+      }
+      this.portOpen = false
     }
   }
 }
@@ -239,6 +265,7 @@ export class NearLinkSyncReceiver {
     )
     dataTransfer.on('readData', this.onRead)
     this.advId = await startAdvertise()
+    console.info(`NEARLINK-RECV advertising id=${this.advId} code=${this.code}`)
   }
 
   private async sendBack(bytes: ArrayBuffer): Promise<void> {

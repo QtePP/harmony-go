@@ -1,3 +1,4 @@
+import { constant, remoteDevice } from '@kit.NearLinkKit'
 import { abilityDelegatorRegistry } from '@kit.TestKit'
 import { common } from '@kit.AbilityKit'
 import { fileIo as fs } from '@kit.CoreFileKit'
@@ -27,11 +28,13 @@ import {
  */
 const SYNC_CODE = '246810'
 const PEER_PARAM = 'peer'
+const PEER_NAME_PARAM = 'peerName'
 const ROLE_PARAM = 'role'
 
 interface TestParams {
   role: string
   peer: string
+  peerName: string
 }
 
 /**
@@ -52,7 +55,11 @@ function paramValue(raw: Record<string, string>, name: string): string {
 
 function params(): TestParams {
   const raw = abilityDelegatorRegistry.getArguments().parameters
-  return { role: paramValue(raw, ROLE_PARAM), peer: paramValue(raw, PEER_PARAM) }
+  return {
+    role: paramValue(raw, ROLE_PARAM),
+    peer: paramValue(raw, PEER_PARAM),
+    peerName: paramValue(raw, PEER_NAME_PARAM)
+  }
 }
 
 function appContext(): common.UIAbilityContext {
@@ -72,10 +79,37 @@ function wait(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * Append a line to a file the harness can pull with `hdc file recv`.
+ *
+ * hilog from the test process is not reliably readable on both devices (the
+ * tablet's buffer showed nothing for our tag), and a silent receiver is exactly
+ * the thing this test has to distinguish from a refused connect, so the facts
+ * are written where reading them is a file copy rather than a log hunt.
+ */
+function diag(path: string, line: string): void {
+  try {
+    const dir = path.substring(0, path.lastIndexOf('/'))
+    if (dir.length > 0 && !fs.accessSync(dir)) {
+      fs.mkdirSync(dir, true)
+    }
+    const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.APPEND | fs.OpenMode.WRITE_ONLY)
+    try {
+      const stamp = `${new Date().toISOString()} ${line}\n`
+      fs.writeSync(file.fd, stamp)
+    } finally {
+      fs.closeSync(file)
+    }
+  } catch (error) {
+    // Diagnostics must never fail the test itself.
+  }
+}
+
 export default function nearLinkSyncTest() {
   describe('NearLinkSync', () => {
     const context = appContext()
     const root = `${context.filesDir}/nl-sync-test`
+    const diagPath = `${context.filesDir}/nl-diag.log`
 
     it('carries a file across the 星闪 link', 0, async () => {
       const options = params()
@@ -92,6 +126,7 @@ export default function nearLinkSyncTest() {
 
       if (options.role === 'scan') {
         const peers: NearLinkPeer[] = await scanNearLinkPeers(6000)
+        diag(diagPath, `scan found ${peers.length}`)
         for (const peer of peers) {
           console.info(`NEARLINK-PEER ${peer.address} name=${peer.name} rssi=${peer.rssi}`)
         }
@@ -105,18 +140,26 @@ export default function nearLinkSyncTest() {
         const finished = new Promise<SyncReport | null>((resolve) => {
           settle = (report: SyncReport | null): void => resolve(report)
         })
-        const timer = setTimeout(() => settle(null), 90000)
-        await receiver.open(
-          context,
-          `${root}/dst`,
-          SYNC_CODE,
-          (_progress: SyncProgress) => {},
-          (_json: string) => {},
-          (report: SyncReport, error: string) => {
-            clearTimeout(timer)
-            settle(error.length === 0 ? report : null)
-          }
-        )
+        const timer = setTimeout(() => settle(null), 150000)
+        diag(diagPath, 'receiver open start')
+        try {
+          await receiver.open(
+            context,
+            `${root}/dst`,
+            SYNC_CODE,
+            (_progress: SyncProgress) => {},
+            (_json: string) => {},
+            (report: SyncReport, error: string) => {
+              clearTimeout(timer)
+              diag(diagPath, `receiver finished files=${report.files} error=[${error}]`)
+              settle(error.length === 0 ? report : null)
+            }
+          )
+          diag(diagPath, 'receiver advertising ok')
+        } catch (error) {
+          diag(diagPath, `receiver open failed ${JSON.stringify(error)}`)
+          settle(null)
+        }
         const report = await finished
         await receiver.close()
         expect(report === null ? -1 : (report as SyncReport).files).assertEqual(1)
@@ -125,15 +168,31 @@ export default function nearLinkSyncTest() {
         return
       }
 
-      // Sender. Scanning in the same run keeps it to one command when the peer
-      // is the only 星闪 device nearby; otherwise pass -s peer <address>.
+      // Sender. The peer address is discovered in this same run: SLE addresses
+      // rotate, so an address remembered from an earlier scan can point at
+      // nothing (connect then fails with 1009700099 and the service logs an
+      // invalid address). `-s peerName <substring>` picks the target by name.
       let peer = options.peer
       if (peer.length === 0) {
-        const peers: NearLinkPeer[] = await scanNearLinkPeers(6000)
+        const peers: NearLinkPeer[] = await scanNearLinkPeers(8000)
         for (const found of peers) {
           console.info(`NEARLINK-PEER ${found.address} name=${found.name} rssi=${found.rssi}`)
-          if (peer.length === 0) {
-            peer = found.address
+        }
+        for (const found of peers) {
+          if (options.peerName.length > 0 && found.name.indexOf(options.peerName) < 0) {
+            continue
+          }
+          peer = found.address
+          break
+        }
+        if (peer.length === 0 && options.peerName.length > 0) {
+          const fallback = await scanNearLinkPeers(6000)
+          for (const found of fallback) {
+            console.info(`NEARLINK-PEER2 ${found.address} name=${found.name}`)
+            if (found.name.indexOf(options.peerName) >= 0) {
+              peer = found.address
+              break
+            }
           }
         }
       }
@@ -142,20 +201,68 @@ export default function nearLinkSyncTest() {
         expect(false).assertTrue()
         return
       }
-      const link = new NearLinkSyncLink(peer)
-      await link.connect()
+      // Pairing first: a bare connect to an unpaired peer fails with
+      // "Operation failed." and the service logs an invalid address, because
+      // the scanned address is a resolvable/encrypted form. Pairing turns it
+      // into a connection we are allowed to make (both screens confirm).
+      const remote = remoteDevice.createRemoteDevice(peer)
+      diag(diagPath, `peer=${peer} pairing=${remote.getPairingState()}`)
+      if (remote.getPairingState() !== constant.PairingState.PAIRING_STATE_PAIRED) {
+        try {
+          await remote.startPairing()
+        } catch (error) {
+          console.error(`NEARLINK-PAIR start failed: ${(error as Error).message}`)
+        }
+        for (let i = 0; i < 120; i++) {
+          if (remote.getPairingState() === constant.PairingState.PAIRING_STATE_PAIRED) {
+            break
+          }
+          await wait(500)
+        }
+        console.info(`NEARLINK-PAIR state-after=${remote.getPairingState()}`)
+      }
+      // Which packet size the handshake accepts is unknown; probe the small
+      // one first, because a refusal at 65535 would otherwise look like a
+      // dead link. Both outcomes are logged with their error codes.
+      // The receiver needs a moment after `aa test` starts before it is
+      // advertising, so retry instead of measuring from launch: a first
+      // attempt that lands too early reports the same 1009700099 as a real
+      // failure and would send the diagnosis in the wrong direction.
+      let link: NearLinkSyncLink | null = null
+      for (let attempt = 0; attempt < 20 && link === null; attempt++) {
+        for (const mtu of [512, 65535]) {
+          const candidate = new NearLinkSyncLink(peer)
+          try {
+            await candidate.connect(mtu)
+            diag(diagPath, `connect attempt=${attempt} mtu=${mtu} ok`)
+            link = candidate
+            break
+          } catch (error) {
+            diag(diagPath, `connect attempt=${attempt} mtu=${mtu} failed ${JSON.stringify(error)}`)
+            await candidate.close()
+          }
+        }
+        if (link === null) {
+          await wait(2000)
+        }
+      }
+      if (link === null) {
+        expect(false).assertTrue()
+        return
+      }
       const entries: SyncEntry[] = collectEntries(`${root}/src`, [], [])
       let sent: SyncReport | null = null
+      const active = link as NearLinkSyncLink
       try {
         sent = await sendProjectOver(
-          link, `${root}/src`, entries, SYNC_CODE, 'test-device', '',
+          active, `${root}/src`, entries, SYNC_CODE, 'test-device', '',
           (_progress: SyncProgress) => {}, () => false
         )
       } finally {
-        await link.close()
+        await active.close()
       }
       await wait(500)
-      console.info(`NEARLINK-E2E sent ${sent === null ? -1 : (sent as SyncReport).files} files`)
+      diag(diagPath, `sent files=${sent === null ? -1 : (sent as SyncReport).files}`)
       expect(sent === null ? -1 : (sent as SyncReport).files).assertEqual(1)
       removeTree(root)
     })

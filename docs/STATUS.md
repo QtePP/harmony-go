@@ -7,6 +7,19 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 >
+- **星闪双机：连接握手通了，卡在接收端回帧（2026-11-23 15:10，手机 CMM-AL10 + 平板 MLR-AL00）**。
+  在 14:50 那条之后又推进了一层，结论修正：**不是配对、不是地址过期、不是 mtu、不是时序**——
+  ① `getPairingState()` 两台都返回 **3（已配对）**；② 同一次 run 内重新扫描，平板地址与上次一致；
+  ③ `mtu` 512 与 65535 都报 `1009700099`；④ 20 次 × 2s 重试全失败。
+  **真正的缺陷是发送端没建自己的端口**：`createPort(uuid)` 原来只在接收端调用。
+  在 `NearLinkSyncLink.connect()` 里补上 `createPort` + `disconnect` 时 `destroyPort` 之后，
+  `connect()` **成功**，错误变成 `对方没有回应（可能不在接收模式）`（`waitFor(T_ACCEPT)` 超时）——
+  即 SLE 链路已建、hello 已发、接收端没回 accept。
+  下一步卡点：接收端 `readData` 没触发（接收端测试仍在等待数据）。这轮没能加诊断，因为测试进程的
+  `filesDir` 指向 `haps/entry_test/files`（不存在），`diag()` 的写盘异常被静默 catch；下轮先把
+  诊断写到 `context.filesDir` 之外的确定路径，再判断是「接收端没收到帧」还是「收到但 `writeData`
+  回不去」。代码改动未提交前已在真机上验证过连接语义，见 `docs/PROJECT-SYNC.md` §6。
+
 - **星闪双机：发现/广告通，`connect()` 卡在地址解析（2026-11-23 14:50，手机 CMM-AL10 + 平板 MLR-AL00）**。
   把星闪对传做成可重复的设备端用例 `entry/src/ohosTest/ets/test/NearLink.test.ets`：用
   `aa test … -s role receiver|sender|scan` 在两台机器上各跑一半（receiver 开端口+广告等 90s，
