@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit'
 import { fileIo as fs } from '@kit.CoreFileKit'
 import { ProjectStore, ProjectSummary } from '../model/ProjectModel'
+import { SessionExport, SessionStore, SessionSummary } from '../model/ChatModel'
 import {
   collectEntries, removeTree, sendProject, SYNC_PORT, SyncProgress, SyncReceiver, SyncReport,
   totalBytes
@@ -35,6 +36,9 @@ export struct SyncSheet {
   @State receiveCode: string = ''
   @State receiveAddress: string = ''
   @State report: SyncReport | null = null
+  @State sessions: SessionSummary[] = []
+  @State selectedSessions: string[] = []
+  private sessionStore: SessionStore = new SessionStore()
   @StorageLink('accent') accent: string = '#4D6BFE'
   onClose: () => void = () => {}
   private receiver: SyncReceiver | null = null
@@ -42,6 +46,14 @@ export struct SyncSheet {
 
   aboutToAppear(): void {
     void this.loadProjects()
+  }
+
+  /** Conversations of the selected project, offered as an optional payload. */
+  private async loadSessions(): Promise<void> {
+    const context = getContext(this) as common.UIAbilityContext
+    await this.sessionStore.init(context)
+    this.sessions = await this.sessionStore.list(this.projectId)
+    this.selectedSessions = []
   }
 
   aboutToDisappear(): void {
@@ -61,6 +73,7 @@ export struct SyncSheet {
     if (this.projects.length > 0) {
       this.projectId = this.projects[0].id
       this.loadTopLevel()
+      void this.loadSessions()
     }
   }
 
@@ -99,7 +112,8 @@ export struct SyncSheet {
   private summaryLine(): string {
     const entries = collectEntries(this.workspace(), this.chosen(), [])
     const bytes = totalBytes(entries)
-    return `${entries.length} 个文件 · ${this.sizeText(bytes)}`
+    const sessions = this.selectedSessions.length > 0 ? ` · ${this.selectedSessions.length} 个会话` : ''
+    return `${entries.length} 个文件 · ${this.sizeText(bytes)}${sessions}`
   }
 
   private sizeText(bytes: number): string {
@@ -128,9 +142,14 @@ export struct SyncSheet {
     }
     const skipped: string[] = []
     const entries = collectEntries(this.workspace(), this.chosen(), skipped)
-    if (entries.length === 0) {
-      this.message = '这个项目没有可发送的文件'
+    if (entries.length === 0 && this.selectedSessions.length === 0) {
+      this.message = '这个项目没有可发送的文件，也没有勾选会话'
       return
+    }
+    let sessionsJson = ''
+    if (this.selectedSessions.length > 0) {
+      const packed = await this.sessionStore.exportSessions(this.selectedSessions)
+      sessionsJson = packed.length > 0 ? JSON.stringify(packed) : ''
     }
     this.busy = true
     this.cancelRequested = false
@@ -145,7 +164,7 @@ export struct SyncSheet {
     try {
       const report = await sendProject(
         this.workspace(), entries, host, port, this.code.trim(),
-        this.projectName(),
+        this.projectName(), sessionsJson,
         (progress: SyncProgress) => {
           this.progress = progress
         },
@@ -159,6 +178,22 @@ export struct SyncSheet {
       this.busy = false
       this.cancelRequested = false
     }
+  }
+
+  /** Take the conversations frame the sender attached, if any. */
+  private async importSessions(json: string): Promise<void> {
+    let packed: SessionExport[] = []
+    try {
+      packed = JSON.parse(json) as SessionExport[]
+    } catch (error) {
+      return
+    }
+    if (!(packed instanceof Array) || packed.length === 0) {
+      return
+    }
+    const added = await this.sessionStore.importSessions(packed, this.projectId)
+    this.message = added > 0 ? `已导入 ${added} 个会话` : '会话都已存在，未覆盖'
+    await this.loadSessions()
   }
 
   private async startReceive(): Promise<void> {
@@ -181,6 +216,9 @@ export struct SyncSheet {
         this.workspace(),
         (progress: SyncProgress) => {
           this.progress = progress
+        },
+        (json: string) => {
+          void this.importSessions(json)
         },
         (report: SyncReport, error: string) => {
           this.busy = false
@@ -206,7 +244,8 @@ export struct SyncSheet {
   }
 
   build() {
-    Column({ space: 12 }) {
+    Scroll() {
+      Column({ space: 12 }) {
       Row() {
         Text('项目同步').fontSize(18).fontWeight(FontWeight.Medium)
         Blank()
@@ -249,6 +288,7 @@ export struct SyncSheet {
                 this.report = null
                 this.message = ''
                 this.loadTopLevel()
+                void this.loadSessions()
               })
           }, (project: ProjectSummary) => project.id)
         }
@@ -308,6 +348,52 @@ export struct SyncSheet {
       }
       .alignItems(HorizontalAlign.Start)
       .width('100%')
+
+      // 会话（可选）：只带本地缓存的消息，不同步服务端日志
+      if (this.sessions.length > 0) {
+        Column({ space: 4 }) {
+          Row({ space: 8 }) {
+            Text('会话（可选）').fontSize(12).fontColor($r('app.color.text_secondary'))
+            Blank()
+            Text(this.selectedSessions.length > 0 ? `已选 ${this.selectedSessions.length} 个` : '不带会话')
+              .fontSize(11)
+              .fontColor($r('app.color.text_tertiary'))
+          }
+          .width('100%')
+          ForEach(this.sessions, (session: SessionSummary) => {
+            Row({ space: 8 }) {
+              Text(this.selectedSessions.includes(session.id) ? '☑' : '☐')
+                .fontSize(16)
+                .fontColor(this.selectedSessions.includes(session.id) ?
+                  this.accent : $r('app.color.text_secondary'))
+              Text(session.title.length > 0 ? session.title : session.id)
+                .fontSize(13)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .layoutWeight(1)
+            }
+            .width('100%')
+            .onClick(() => {
+              if (this.busy) {
+                return
+              }
+              if (this.selectedSessions.includes(session.id)) {
+                this.selectedSessions = this.selectedSessions.filter((item: string) => item !== session.id)
+              } else {
+                this.selectedSessions = this.selectedSessions.concat([session.id])
+              }
+            })
+          }, (session: SessionSummary) => session.id)
+          Text('只同步本地缓存的消息（最近 200 条）；图片不随会话走。导入的会话标题带「（导入）」。')
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+            .width('100%')
+        }
+        .width('100%')
+        .padding(8)
+        .backgroundColor($r('app.color.surface_muted'))
+        .borderRadius(8)
+      }
 
       // 模式
       Row({ space: 8 }) {
@@ -430,10 +516,13 @@ export struct SyncSheet {
           .fontColor($r('app.color.text_tertiary'))
           .width('100%')
       }
+      }
+      .width('100%')
+      .padding(16)
+      .alignItems(HorizontalAlign.Start)
     }
     .width('100%')
     .height('100%')
-    .padding(16)
-    .alignItems(HorizontalAlign.Start)
+    .scrollBar(BarState.Auto)
   }
 }

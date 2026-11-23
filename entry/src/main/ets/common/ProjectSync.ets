@@ -70,6 +70,7 @@ const T_DENY: string = 'deny'
 const T_FILE: string = 'file'
 const T_CHUNK: string = 'chunk'
 const T_FILE_END: string = 'fileEnd'
+const T_SESSIONS: string = 'sessions'
 const T_DONE: string = 'done'
 const T_ERROR: string = 'error'
 
@@ -306,6 +307,7 @@ export async function sendProject(
   port: number,
   code: string,
   name: string,
+  sessionsJson: string,
   onProgress: (progress: SyncProgress) => void,
   cancelled: () => boolean
 ): Promise<SyncReport> {
@@ -350,6 +352,14 @@ export async function sendProject(
     })
     await waitFor(T_ACCEPT)
     accepted = true
+    // Conversations ride on their own frame before the files: they are a few
+    // hundred KB of JSON at most, and keeping them out of the manifest means
+    // the receiver can import them with the same code path that reads its own
+    // store, instead of unpacking a pseudo-file.
+    if (sessionsJson.length > 0) {
+      const encoded = util.TextEncoder.create('utf-8').encodeInto(sessionsJson)
+      await tcp.send({ data: frame({ t: T_SESSIONS }, encoded.buffer as ArrayBuffer) })
+    }
 
     let filesDone = 0
     let bytesDone = 0
@@ -479,6 +489,7 @@ export class SyncReceiver {
     context: common.UIAbilityContext,
     targetRoot: string,
     onProgress: (progress: SyncProgress) => void,
+    onSessions: (json: string) => void,
     onFinished: (report: SyncReport, error: string) => void
   ): Promise<number> {
     await this.close()
@@ -501,7 +512,7 @@ export class SyncReceiver {
       await server.listen({ address: '0.0.0.0', port: port, family: 1 })
     }
     server.on('connect', (conn: socket.TCPSocketConnection) => {
-      this.attach(conn, onProgress, onFinished)
+      this.attach(conn, onProgress, onSessions, onFinished)
     })
     this.server = server
     return port
@@ -535,6 +546,7 @@ export class SyncReceiver {
   private attach(
     conn: socket.TCPSocketConnection,
     onProgress: (progress: SyncProgress) => void,
+    onSessions: (json: string) => void,
     onFinished: (report: SyncReport, error: string) => void
   ): void {
     this.conn = conn
@@ -552,6 +564,7 @@ export class SyncReceiver {
     let total = 0
     let filesDone = 0
     let bytesDone = 0
+    let sessionsJson = ''
     let currentPath = ''
     let currentSize = 0
     let currentWritten = 0
@@ -597,6 +610,9 @@ export class SyncReceiver {
         }
         this.report.files = moved.length
         this.report.bytes = bytesDone
+        if (sessionsJson.length > 0) {
+          onSessions(sessionsJson)
+        }
         onFinished(this.report, '')
       } catch (moveError) {
         onFinished(this.report, `写入工作区失败：${(moveError as Error).message}`)
@@ -642,6 +658,13 @@ export class SyncReceiver {
           if (!handshook) {
             finish('对方没有先握手')
             return
+          }
+          if (header.t === T_SESSIONS) {
+            if (data !== null) {
+              sessionsJson = util.TextDecoder.create('utf-8')
+                .decodeToString(new Uint8Array(data))
+            }
+            continue
           }
           if (header.t === T_FILE) {
             currentPath = header.path === undefined ? '' : header.path

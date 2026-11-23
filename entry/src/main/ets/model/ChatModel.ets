@@ -133,6 +133,38 @@ interface StoredIndexRow {
   archived?: boolean
 }
 
+/**
+ * One conversation packed for transfer.
+ *
+ * `raw` is the same JSON the store keeps for a session, so the receiver writes
+ * it back without re-encoding a transcript this class did not produce. Images
+ * are stripped on import: their paths point into the sender's sandbox and would
+ * render as broken links on the other side.
+ */
+export interface SessionExport {
+  id: string
+  title: string
+  updatedAt: number
+  raw: string
+}
+
+/** Drop sandbox image paths from a packed transcript; '' when unparseable. */
+export function stripSessionImages(raw: string): string {
+  let stored: StoredSession
+  try {
+    stored = JSON.parse(raw) as StoredSession
+  } catch (error) {
+    return ''
+  }
+  if (!(stored.messages instanceof Array)) {
+    return ''
+  }
+  for (const message of stored.messages) {
+    message.image = undefined
+  }
+  return JSON.stringify(stored)
+}
+
 /** One persisted trace entry of a turn's tool call list. */
 interface StoredTrace {
   name: string
@@ -354,6 +386,83 @@ export class SessionStore {
     } catch (error) {
       return []
     }
+  }
+
+  /**
+   * Pack the chosen conversations for transfer.
+   *
+   * The transcript is handed over as the store's own JSON string, not a
+   * re-encoding: the receiver's `load()` already knows how to read it, and a
+   * second shape would be a second thing to keep in sync.
+   */
+  async exportSessions(ids: string[]): Promise<SessionExport[]> {
+    const out: SessionExport[] = []
+    if (this.store === null) {
+      return out
+    }
+    const rows = await this.list()
+    for (const id of ids) {
+      const raw = await this.store.get(`session.${id}`, '') as string
+      if (raw.length === 0) {
+        continue
+      }
+      let title = id
+      let updatedAt = Date.now()
+      for (const row of rows) {
+        if (row.id === id) {
+          title = row.title
+          updatedAt = row.updatedAt
+          break
+        }
+      }
+      out.push({ id: id, title: title, updatedAt: updatedAt, raw: raw })
+    }
+    return out
+  }
+
+  /**
+   * Import packed conversations under `projectId`.
+   *
+   * A session id that already exists is left alone: re-importing must not
+   * overwrite history the user may have continued on this device. Imported
+   * titles are marked so a synced conversation is never mistaken for one that
+   * started here. Returns how many were new.
+   */
+  async importSessions(packed: SessionExport[], projectId: string): Promise<number> {
+    if (this.store === null || packed.length === 0) {
+      return 0
+    }
+    const existing = await this.list()
+    let added = 0
+    for (const item of packed) {
+      let already = false
+      for (const row of existing) {
+        if (row.id === item.id) {
+          already = true
+          break
+        }
+      }
+      if (already) {
+        continue
+      }
+      const raw = stripSessionImages(item.raw)
+      if (raw.length === 0) {
+        continue
+      }
+      await this.store.put(`session.${item.id}`, raw)
+      existing.push({
+        id: item.id,
+        title: `${item.title}（导入）`,
+        updatedAt: item.updatedAt,
+        projectId: projectId
+      })
+      added++
+    }
+    if (added > 0) {
+      await this.store.put(SessionStore.INDEX_KEY, JSON.stringify(existing))
+      await this.store.flush()
+    }
+    return added
   }
 
   private async mergeIndex(sessionId: string, projectId: string, title: string): Promise<SessionSummary[]> {
