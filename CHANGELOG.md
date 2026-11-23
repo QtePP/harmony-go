@@ -156,6 +156,18 @@
 
 ### 修复
 
+- **语音输入/朗读起不来是参数写错，不是缺语音包（2026-11-23 真机推翻旧结论）**：`Speech.ets` 与
+  `ReadAloud.ets` 创建引擎时都传 `CreateEngineParams.online: 0`，而 Core Speech Kit 的
+  `online` 只有 **`1` = 离线**（`@hms.ai.speechRecognizer.d.ts`：「**1**: offline. Currently, only the
+  offline mode is supported」），`0` 是要一个并不存在的在线模式；`createEngine` 于是回
+  **`1002200001`**（错误码文档把「模式不支持」列在可能原因里），和「资源不存在」共用同一个码，
+  于是被记成「缺离线中文语音包」记了两个月。改成 `online: 1` 后真机（手机 CMM-AL10）：
+  点麦克风 → 不再弹错、麦克风常亮、系统 `com.huawei.hmsapp.hiai.voice` 日志出现
+  `PipalEngine: Infer Model [Encoder] load cost = 603` 与 `ServerInnerMonitor` 心跳（识别模型真的在跑）；
+  长按回复 →「朗读这条回复」→ 系统 TTS 出声并 `AI_TEXT: TtsReleaseSync Succeeded … online: 1.00`。
+  同时改掉三处误导文案（toast、设置页「装好离线语音包后重试」、`speechAsrUsable` 注释）。
+  **旧设备恢复路径**：设置 ›「语音输入 → 重试」清掉 `speech_asr_usable=false`，麦克风即回来，不用重装。
+
 - **设置面板的「保存」在手机上落到屏外、而且面板不滚**：加了 GitHub Token 字段后内容超过面板高度，`保存`
   不只是「不好找」，是**够不到**。`SheetSize.LARGE` 在这台手机上只有约半屏；改成 `height: '92%'` 后
   单层 `Scroll` 占满面板，滚到底 `保存`/`诊断` 就在眼前。中间试过「滚动区 + 固定底栏」，结果滚动区被挤到

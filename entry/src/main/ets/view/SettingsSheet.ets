@@ -433,7 +433,7 @@ export struct SettingsSheet {
             Row({ space: 8 }) {
               Column({ space: 2 }) {
                 Text('语音输入').fontSize(12).fontColor($r('app.color.text_secondary'))
-                Text('上次引擎启动失败，装好离线语音包后点右边重试')
+                Text('语音输入上次启动失败，点右边重试')
                   .fontSize(11).fontColor($r('app.color.text_tertiary'))
               }
               .alignItems(HorizontalAlign.Start)

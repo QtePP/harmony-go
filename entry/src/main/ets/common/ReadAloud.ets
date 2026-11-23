@@ -67,7 +67,8 @@ export class ReadAloud {
     const params: textToSpeech.CreateEngineParams = {
       language: 'zh-CN',
       person: 0,
-      online: 0,
+      // See Speech.ets: 1 is the offline mode, the only one this kit supports.
+      online: 1,
       extraParams: {}
     }
     try {
@@ -76,7 +77,7 @@ export class ReadAloud {
           // Same shape as speech input: the syscap is advertised, the engine
           // still cannot construct (device log: "Create Engine Error!
           // engineNo 0") because the voice package is a separate download.
-          onDone(`朗读引擎启动失败（${error.code}）：可能缺少系统语音包`)
+          onDone(`朗读引擎启动失败（${error.code}），朗读暂不可用`)
           return
         }
         this.engine = engine

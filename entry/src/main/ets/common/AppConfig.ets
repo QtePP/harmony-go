@@ -231,10 +231,11 @@ export class AppConfig {
   /**
    * Whether the offline speech engine has ever failed to start on this device.
    *
-   * The syscap can be advertised while the offline Chinese model is a separate
-   * download; the engine then fails every time with 1002200001. Remembering the
-   * failure keeps the microphone out of the composer instead of offering a
-   * button that can only produce the same toast on every launch.
+   * Remembering the failure keeps the microphone out of the composer instead of
+   * offering a button that can only produce the same toast on every launch. The
+   * one way this got set in the field was a wrong CreateEngineParams.online
+   * value (0 = the unsupported online mode), not a missing voice pack; Settings
+   * carries the reset button that brings the microphone back after a fix.
    */
   static speechAsrUsable(context: common.UIAbilityContext): boolean {
     try {

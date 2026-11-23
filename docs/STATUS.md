@@ -24,6 +24,23 @@
   **同时纠正一条旧记录**：catalog 里 `deepseek-flash` 才是 DeepSeek-V4.1-Flash，
   `deepseek-v4-flash` 从来不是合法 id；旧文档曾把它当「纯文本」写进补丁注释，已改。
 
+- **语音输入/朗读起不来是参数写错，不是缺语音包——旧结论被真机推翻（2026-11-23 10:50，手机 CMM-AL10）**。
+  用户贴的 toast 是「语音引擎启动失败（1002200001）」，旧记录（2026-11-16，平板与手机各一次）把它
+  归因为**缺离线中文语音包**。这次**先查 SDK 声明再下结论**：`@hms.ai.speechRecognizer.d.ts` 里
+  `CreateEngineParams.online` 写的是「**1**: offline. Currently, only the offline mode is supported」，
+  而我们的 `Speech.ets` / `ReadAloud.ets` 传的是 **0**（那个并不存在的在线模式）——`createEngine`
+  于是回 `1002200001`；官方错误码文档把「**模式不支持**」列在同一码的可能原因里，与「资源不存在」
+  **共用一个码**，这就是它被误记成「缺语音包」两个月的原因。改成 `online: 1` 后真机实测：
+  ①设置 ›「语音输入 → 重试」→ 回对话，麦克风回来（旧标志 `speech_asr_usable=false` 清掉了）；
+  ②点麦克风**不再弹错**，按钮转蓝常亮，系统日志 `com.huawei.hmsapp.hiai.voice` 出现
+  `PipalEngine: Infer Model [Encoder] load cost = 603, verify cost = 224` 与 `ServerInnerMonitor` 心跳
+  ——离线识别模型真的在跑（设备上并不缺语音包）；③长按模型回复 →「朗读这条回复」→ 系统 TTS 出声，
+  我们侧日志 `AI_TEXT: [(TtsReleaseSync)]Succeeded in releasing tts engine, engineName: , online: 1.00`
+  （`online: 1.00` 就是新参数），紧跟着 `HiAI_PcmSoundPlayer: release success`。
+  同时改掉三处误导文案：toast、设置页「装好离线语音包后点右边重试」、`speechAsrUsable` 的注释。
+  **教训**：一个错误码覆盖多种原因时，「最像的那个解释」不能直接当结论——这次是靠读 SDK 声明
+  加一次「只改一个参数」的对拍推翻的。
+
 - **设置里的模型名修正之后，把老设备里存的假 id 迁移掉（2026-11-23 10:23，手机 CMM-AL10）**。
   同一天的 `6da2e63` 把「模型」从写死的假 id 换成按 Key 拉 `/models` 的列表，但它**没处理已经存进
   preferences 的旧值**：那个月点过「保存」的设备，`dsh_settings` 里仍然是 `deepseek-v4-flash`，

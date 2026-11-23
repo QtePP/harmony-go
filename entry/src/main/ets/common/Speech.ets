@@ -76,7 +76,13 @@ export class SpeechInput {
     }
     const params: speechRecognizer.CreateEngineParams = {
       language: 'zh-CN',
-      online: 0,
+      // `1` means offline, which is the only mode Core Speech Kit exposes
+      // (`CreateEngineParams.online`: "1: offline. Currently, only the offline
+      // mode is supported."). Sending 0 asks for the online mode that does not
+      // exist here, and createEngine answers 1002200001 "engine creation
+      // failed / mode not supported" — the same code a missing voice pack
+      // produces, which is why this looked like a missing download.
+      online: 1,
       extraParams: {}
     }
     try {
@@ -86,7 +92,7 @@ export class SpeechInput {
           // the engine then fails to construct (device log: "Failed to create
           // engine [callback]"). Say what is missing instead of a bare code —
           // the fix is on the system side, not in this app.
-          callbacks.onError(`语音引擎启动失败（${error.code}）：可能缺少离线中文语音包`)
+          callbacks.onError(`语音引擎启动失败（${error.code}），语音识别暂不可用`)
           return
         }
         this.engine = engine
