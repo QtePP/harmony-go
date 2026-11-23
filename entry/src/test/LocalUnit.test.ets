@@ -11,6 +11,7 @@ import { compactCount, dayKey, mergeUsage, usageTotal, UsageDay } from '../main/
 import { spokenForm } from '../main/ets/common/ReadAloud';
 import { extOf, fallbackUtd, nameOf } from '../main/ets/common/FileShare';
 import { modelsFromBody, ModelEntry, normalizeModelId } from '../main/ets/common/ModelCatalog';
+import { flattenChoices, AcpModelChoice, AcpConfigGroup } from '../main/ets/model/AcpProtocol';
 
 /**
  * Tests for the pure projections and formatters.
@@ -444,6 +445,58 @@ export default function localUnitTest() {
       expect(normalizeModelId('deepseek-v4-pro')).assertEqual('deepseek-v4-pro');
       expect(normalizeModelId('vendor/some-model')).assertEqual('vendor/some-model');
       expect(normalizeModelId('')).assertEqual('');
+    });
+  });
+
+  describe('modelChoices', () => {
+    // dsh-acp nests model options by provider ({group, name, options[]}). The
+    // flattening used to drop both the group and its display name, so the
+    // picker showed one flat list even when several providers were routable.
+    it('keeps the provider group dsh-acp sends, and its display name', 0, () => {
+      const entries: AcpConfigGroup[] = [
+        {
+          group: 'deepseek-official',
+          name: 'DeepSeek',
+          options: [
+            { value: 'deepseek-official|deepseek-flash', name: 'DeepSeek-V4.1-Flash' },
+            { value: 'deepseek-official|deepseek-v4-pro', name: 'DeepSeek-V4-Pro' }
+          ]
+        }
+      ];
+      const choices: AcpModelChoice[] = flattenChoices(entries);
+      expect(choices.length).assertEqual(2);
+      expect(choices[0].group).assertEqual('deepseek-official');
+      expect(choices[0].groupName).assertEqual('DeepSeek');
+      expect(choices[1].name).assertEqual('DeepSeek-V4-Pro');
+    });
+
+    it('labels every group separately so same-named models stay apart', 0, () => {
+      const entries: AcpConfigGroup[] = [
+        { group: 'a', name: 'A', options: [{ value: 'a|m', name: 'same' }] },
+        { group: 'b', name: 'B', options: [{ value: 'b|m', name: 'same' }] }
+      ];
+      const choices = flattenChoices(entries);
+      expect(choices.length).assertEqual(2);
+      expect(choices[0].group).assertEqual('a');
+      expect(choices[1].group).assertEqual('b');
+    });
+
+    it('falls back to the group id when the server sends no name', 0, () => {
+      const entries: AcpConfigGroup[] = [{ group: 'g1', options: [{ value: 'g1|m' }] }];
+      const choices = flattenChoices(entries);
+      expect(choices[0].groupName).assertEqual('g1');
+      expect(choices[0].name).assertEqual('g1|m');
+    });
+
+    it('leaves an ungrouped leaf without a group', 0, () => {
+      const choices = flattenChoices([{ value: 'x' }]);
+      expect(choices.length).assertEqual(1);
+      expect(choices[0].group).assertEqual('');
+      expect(choices[0].groupName).assertEqual('');
+    });
+
+    it('returns nothing for an absent list', 0, () => {
+      expect(flattenChoices(undefined).length).assertEqual(0);
     });
   });
 

@@ -114,6 +114,14 @@ interface QueuedTurn {
   paths: string[]
 }
 
+/** One provider section of the model picker. */
+interface ModelGroupView {
+  id: string
+  /** Provider display name from the server; empty for an ungrouped route. */
+  name: string
+  choices: AcpModelChoice[]
+}
+
 /**
  * App shell.
  *
@@ -197,6 +205,30 @@ struct Index {
   private liveAssistant: ChatMessage | null = null
   /** Current model config value (JSON array string on the wire). */
   private currentModelValue: string = ''
+  /**
+   * Choices grouped by provider for the picker.
+   *
+   * Derived on render rather than stored: the authoritative list is rebuilt
+   * from every set_config_option response (`applyAcpConfig`), so a stored
+   * grouping would go stale exactly when the shrink happens. Choices with no
+   * group (a single ungrouped route) land in one unnamed section.
+   */
+  private modelGroups(): ModelGroupView[] {
+    const out: ModelGroupView[] = []
+    const index = new Map<string, number>()
+    for (const choice of this.modelChoices) {
+      const id = choice.group.length === 0 ? '' : choice.group
+      const name = choice.groupName.length === 0 ? '' : choice.groupName
+      const known = index.get(id)
+      if (known === undefined) {
+        index.set(id, out.length)
+        out.push({ id: id.length === 0 ? 'ungrouped' : id, name: name, choices: [choice] })
+      } else {
+        out[known].choices.push(choice)
+      }
+    }
+    return out
+  }
   /** A reconnect chain is running; at most one may exist. */
   private reconnecting: boolean = false
   /** A turn was in flight when the bridge socket dropped. */
@@ -2921,32 +2953,42 @@ struct Index {
               .fontWeight(FontWeight.Medium)
             Scroll() {
               Column({ space: 4 }) {
-                ForEach(this.modelChoices, (choice: AcpModelChoice) => {
-                  Row({ space: 8 }) {
-                    Column({ space: 2 }) {
-                      Text(choice.name)
-                        .fontSize(14)
-                        .fontColor($r('app.color.text_primary'))
-                      if (choice.description.length > 0) {
-                        Text(choice.description)
+                // Grouped by provider, as dsh-acp sends them. A flat list hid the
+                // fact that choices come from different routes (and with several
+                // providers configured, two models can share a name).
+                ForEach(this.modelGroups(), (group: ModelGroupView) => {
+                  Text(group.name)
+                    .fontSize(11)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .width('100%')
+                    .padding({ top: 6 })
+                  ForEach(group.choices, (choice: AcpModelChoice) => {
+                    Row({ space: 8 }) {
+                      Column({ space: 2 }) {
+                        Text(choice.name)
+                          .fontSize(14)
+                          .fontColor($r('app.color.text_primary'))
+                        if (choice.description.length > 0) {
+                          Text(choice.description)
+                            .fontSize(11)
+                            .fontColor($r('app.color.text_tertiary'))
+                        }
+                      }
+                      .alignItems(HorizontalAlign.Start)
+                      .layoutWeight(1)
+                      if (choice.value === this.currentModelValue) {
+                        Text('当前')
                           .fontSize(11)
-                          .fontColor($r('app.color.text_tertiary'))
+                          .fontColor(this.accent)
                       }
                     }
-                    .alignItems(HorizontalAlign.Start)
-                    .layoutWeight(1)
-                    if (choice.value === this.currentModelValue) {
-                      Text('当前')
-                        .fontSize(11)
-                        .fontColor(this.accent)
-                    }
-                  }
-                  .width('100%')
-                  .padding({ top: 8, bottom: 8 })
-                  .onClick(() => {
-                    void this.pickModel(choice)
-                  })
-                }, (choice: AcpModelChoice) => choice.value)
+                    .width('100%')
+                    .padding({ top: 8, bottom: 8 })
+                    .onClick(() => {
+                      void this.pickModel(choice)
+                    })
+                  }, (choice: AcpModelChoice) => choice.value)
+                }, (group: ModelGroupView) => group.id)
               }
               .width('100%')
             }

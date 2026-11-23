@@ -131,6 +131,16 @@ export interface AcpModelChoice {
   value: string
   name: string
   description: string
+  /**
+   * Provider id this choice belongs to, when the server sent groups.
+   *
+   * dsh-acp nests model options by provider (`{group, name, options[]}`), and
+   * the group name is the only human-readable provider label on the wire.
+   * Flattening used to throw both away, so the picker showed a flat list of
+   * model names with no indication that they came from different routes.
+   */
+  group: string
+  groupName: string
 }
 
 /** Tolerant view of the `update` body of a session/update notification. */
@@ -260,15 +270,24 @@ export function flattenChoices(entries: AcpConfigGroup[] | undefined): AcpModelC
   }
   for (const entry of entries) {
     if (entry.options !== undefined && entry.options.length > 0) {
+      // This node is a provider group: label its children with it.
+      const groupId = entry.group === undefined || entry.group.length === 0 ? (entry.value ?? '') : entry.group
+      const groupName = entry.name === undefined || entry.name.length === 0 ? groupId : entry.name
       const nested = flattenChoices(entry.options)
       for (const item of nested) {
-        out.push(item)
+        out.push({
+          value: item.value,
+          name: item.name,
+          description: item.description,
+          group: item.group.length === 0 ? groupId : item.group,
+          groupName: item.groupName.length === 0 ? groupName : item.groupName
+        })
       }
     } else if (entry.value !== undefined) {
       const value = entry.value
       const name = entry.name === undefined || entry.name.length === 0 ? value : entry.name
       const description = entry.description === undefined ? '' : entry.description
-      out.push({ value: value, name: name, description: description })
+      out.push({ value: value, name: name, description: description, group: '', groupName: '' })
     }
   }
   return out

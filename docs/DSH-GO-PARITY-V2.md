@@ -55,6 +55,26 @@ dsh-go 已经从「一个安卓聊天客户端」长成了「**本机引擎 + �
 | 本机引擎 | PRoot 装 Ubuntu + Node + dsh | 进程内嵌 Node（dlopen libnode） | — | **机制不同、能力等价**，且更轻（无 PRoot） |
 | **远程主机（SSH / DS-Harness Remote）** | 有（`dartssh2` fork + `packages/dsh_remote`） | 无 | **B** | 可做：载荷里加纯 JS `ssh2`，把「本地 ACP」换成「SSH 通道上的 ACP」；`dsh_remote` 的协议是第三方包，需按其文档实现 |
 | **网页版切换** | 有（`ui/web`，原生 ↔ 官方 Web UI 同一会话） | 无 | **C** | 官方 Web UI 由 `dsh-api-gateway` 提供，那是 ACP profile 未挂载的宿主服务（与 §4.3 自动化任务同一个根因）。**WebView 本身我们有**（文件预览已在用 `Web`），缺的是要打开的那个服务 |
+- **模型选择已按 dsh-go 的分组口径对齐（2026-11-23）**。读了 dsh-go（`ccch1mneyyy/dsh-go`）的实现后，
+  三处差异被证实并修掉：
+  1. **它的数据源是引擎的 `session/modelCatalog`**（`packages/dsh_client/lib/src/session_api.dart:743`），
+     返回 `ModelCatalog { default, routableProviders, groups[], failures[] }`，每个 model 自带
+     `reasoning.efforts` / `defaultEffort`。**这条路在我们这边不可达**：`modelCatalog` 由
+     `dsh-api-remotes` / `dsh-api-gateway` 提供，而 `dsh-acp-app` 的依赖只有
+     `dsh-acp` + `dsh-cmdline`，设备上根本没有那个 seam。所以「一次请求拿到全量目录」在 ACP profile
+     下拿不到，**不是没做，是平台/profile 边界**。
+  2. **但 ACP 的 `configOptions` 已经带了同样的分组**：`dsh-acp/lib/index.js:392` 用
+     `llm.listProviders()` × `llm.listModels()` 组装成 `{group, name, options[]}`，某 provider 目录
+     不可用时返回空组（而不是整体失败）；`reasoning_effort` 选项也从 `resolveModelInfo` 取
+     `defaultEffort` + `efforts`。**我们的 `flattenChoices` 把 group 和 name 全丢了**，于是选择器是
+     一条扁平列表——同名模型、多 provider 时看不出区别。现已保留 `group` / `groupName`，选择器按
+     provider 分段（`ModelGroupView`），5 条单测钉住（含同名不同组、无 name 回落 group id、无组叶子）。
+  3. **`shortModelName` 那种短写在 dsh-go 里是给胶囊用的**（`DeepSeek-V4-Pro` → `V4 Pro`）；我们
+     不用胶囊，选择器显示全名，**这条不跟**——短写会让两个模型的显示名撞车。
+  **仍缺的两项（诚实清单）**：①`failures[]`（逐 provider 报「这个 provider 现在为什么没模型」）——
+  ACP 只把它吞成空组，客户端拿不到原因；②reasoning 选择器我们有 `AcpConfigOption` 通道但当前 UI
+  只渲染了模型，未做 effort 胶囊。
+
 | 模型/provider 切换 | 有（多 provider、自定义） | 有（会话内模型选择器，`configOptions` 驱动） | — | 已对齐（自定义 provider 需 B：走 settings 写入 dsh 配置） |
 
 ## 5. 系统级能力
