@@ -233,6 +233,21 @@
   PDF **MediaBox 992.25×12000pt / 968KB**，两份文件都从设备取回校验（PDF 用 `qlmanage` 渲染缩略图
   确认整页内容在），每次导出后系统分享面板正常弹出（「分享 1 项」）。
 
+- **`html` 组件库补三类能力：图表、可排序表格、检查基线（2026-11-23 18:35，Node 冒烟 + 真机装包）**。
+  ① **图表（纯 CSS，零脚本）**：`chart-bars`（柱状，柱高写百分比）与 `chart-donut`（`conic-gradient`
+  环形 + 中心 `--p` 百分比）；导出的长图/PDF 与预览完全一致，因为不依赖 JS。
+  ② **`table-sortable`**：表头点击排序（`data-type=number|text`）、`data-page-size` 分页，全部是**页面内联脚本**
+  的渐进增强——脚本不可用时表格照样完整显示，导出时会带上当前排序与分页状态；`check` 只把**外链脚本**判为错误。
+  ③ **质量回归**：`check` 现在会把「体积 / 用到的组件 / warn+error 数」写成 `.dsh-html/<page>.json` 基线，
+  下一次检查输出 `baseline: 体积 8KB → 12KB（+4KB, +50%）`、`baseline: 新增组件 stats` 这类行，
+  让风格漂移和体积膨胀在模型还能改的时候就被指出来。
+  验证：插件单测 **27 条**全绿（含「图表片段不含 script」「可排序片段不含外链」「inline script 不算错误」
+  「基线首次/对比/持平」，以及**用假 DOM 直接跑页面内联脚本**证明表头点击按升序/降序/再升序排列）；
+  Node 冒烟走 create→fill(三种组件)→check→append→check，两次检查分别输出首次基线与持平结论。
+  真机（手机 CMM-AL10）：让模型用工具生成 `kit-test.html` —— **14.6KB、0 外链**，check 同时写出
+  `.dsh-html/kit-test.html.json` 基线（`components: [table, table-sortable, chart-bars, chart-donut]`，
+  `warnings: 0, errors: 0`）；预览页确认柱状图（W1–W4 带数值）、72% 环形进度、可排序表格都按组件样式渲染。
+
 - **新增 `html` 工具：用组件库写页面，而不是每次从零推理（2026-11-23 18:25，手机 CMM-AL10）**。
   背景：页面是模型用通用 `write` 工具从零拼出来的——排版/配色/移动端宽度每次重新推理，两页像两个产品，
   还常带 CDN 外链（设备上离线打不开）和 `window.print()` 按钮（嵌入式 Web 点不动）。

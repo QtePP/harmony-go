@@ -18,6 +18,13 @@
 
 ### 新增
 
+- **`html` 组件库扩到 19 个：图表、可排序表格与检查基线（2026-11-23）**。新增纯 CSS 的 `chart-bars`
+  （柱状）与 `chart-donut`（`conic-gradient` 环形）；`table-sortable` 用页面内联脚本做表头排序 +
+  `data-page-size` 分页，属于渐进增强（脚本禁用时表格仍完整显示，导出保留当前状态）；`check` 增加
+  **基线对比**：把体积/组件/warn+error 写进 `.dsh-html/<page>.json`，再次检查时输出体积与组件增减，
+  用来发现页面漂移。插件单测 27 条并入 `bash scripts/test.sh unit`（含用假 DOM 验证表头排序），组件清单见 `docs/HTML-COMPONENTS.md`。
+
+
 - **`html` 工具：A2UI 组件库写页面（2026-11-23 真机）**。此前网页由模型用 `write` 从零拼，每次重复推理
   排版/配色/移动端，产品上表现为风格漂移、偶发 CDN 外链（离线打不开）与 `window.print()` 按钮（点不动）。
   新工具 `html` 提供四个动作：`components`（16 个组件 + 可复制片段）、`create`（单文件骨架：内联样式、

@@ -2,7 +2,8 @@
 
 > 这是 `@ohos/dsh-tool-html` 内置组件清单的快照；**权威来源是插件本身**（`html` 工具的 `action: components`）。
 > 页面骨架已内联整套样式与明暗两套配色，模型只需要选组件、填内容：不要自己写 CSS，不要引外链，
-> 不要加打印/分享按钮（预览页已经有「导出」）。
+> 不要加打印/分享按钮（预览页已经有「导出」）。图表是纯 CSS，可排序表格用页面内联脚本做渐进增强
+> （脚本不可用时表格照样完整显示）。
 
 # 组件清单（html 工具内置）
 
@@ -93,6 +94,104 @@
 </div>
 ```
 
+## table-sortable · 可排序表格
+
+什么时候用：行数较多、需要按列排序或分页查看的数据（动作清单、支出明细）。内联脚本只做渐进增强：脚本被禁用时表格照样完整显示，导出长图/PDF 会带上当前排序与分页状态。
+
+```html
+<div class="table">
+  <table class="sortable" data-page-size="8">
+    <thead>
+      <tr>
+        <th class="sortable" data-type="text">动作</th>
+        <th class="sortable" data-type="number">组数</th>
+        <th class="sortable" data-type="number">次数</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>深蹲</td><td>4</td><td>8</td></tr>
+      <tr><td>卧推</td><td>4</td><td>10</td></tr>
+      <tr><td>硬拉</td><td>3</td><td>5</td></tr>
+      <tr><td>划船</td><td>3</td><td>12</td></tr>
+      <tr><td>推举</td><td>3</td><td>8</td></tr>
+    </tbody>
+  </table>
+</div>
+<script>
+(function () {
+  function cellText(row, index) { var c = row.cells[index]; return c ? c.textContent.trim() : ""; }
+  function toNumber(value) { var n = parseFloat(String(value).replace(/[^0-9.-]/g, "")); return isNaN(n) ? 0 : n; }
+  function compareRows(a, b, index, type, dir) {
+    var left = type === "number" ? toNumber(cellText(a, index)) : cellText(a, index);
+    var right = type === "number" ? toNumber(cellText(b, index)) : cellText(b, index);
+    if (left < right) { return -dir; }
+    if (left > right) { return dir; }
+    return 0;
+  }
+  function init(table) {
+    if (table.getAttribute("data-ready")) { return; }
+    table.setAttribute("data-ready", "1");
+    var body = table.tBodies[0];
+    if (!body) { return; }
+    var rows = Array.prototype.slice.call(body.rows);
+    var heads = table.tHead ? Array.prototype.slice.call(table.tHead.rows[0].cells) : [];
+    var size = parseInt(table.getAttribute("data-page-size") || "0", 10);
+    var page = 0;
+    var column = -1;
+    var dir = 1;
+    var pager = null;
+    var label = null;
+    var prev = null;
+    var next = null;
+    var host = table.closest(".table") || table;
+    if (size > 0) {
+      pager = document.createElement("div");
+      pager.className = "table-pager";
+      prev = document.createElement("button");
+      prev.type = "button";
+      prev.textContent = "上一页";
+      next = document.createElement("button");
+      next.type = "button";
+      next.textContent = "下一页";
+      label = document.createElement("span");
+      prev.onclick = function () { page = Math.max(0, page - 1); render(); };
+      next.onclick = function () { page = Math.min(maxPage(), page + 1); render(); };
+      pager.appendChild(prev);
+      pager.appendChild(label);
+      pager.appendChild(next);
+      host.parentNode.insertBefore(pager, host.nextSibling);
+    }
+    function maxPage() { return Math.max(0, Math.ceil(rows.length / size) - 1); }
+    function render() {
+      var sorted = rows.slice();
+      if (column >= 0) {
+        var type = heads[column].getAttribute("data-type") || "text";
+        sorted.sort(function (a, b) { return compareRows(a, b, column, type, dir); });
+      }
+      while (body.firstChild) { body.removeChild(body.firstChild); }
+      var start = size > 0 ? page * size : 0;
+      var end = size > 0 ? Math.min(sorted.length, start + size) : sorted.length;
+      for (var i = start; i < end; i++) { body.appendChild(sorted[i]); }
+      heads.forEach(function (head, index) {
+        head.setAttribute("aria-sort", index === column ? (dir > 0 ? "ascending" : "descending") : "none");
+      });
+      if (pager) {
+        prev.disabled = page <= 0;
+        next.disabled = page >= maxPage();
+        label.textContent = (page + 1) + " / " + (maxPage() + 1);
+      }
+    }
+    heads.forEach(function (head, index) {
+      if (!head.classList.contains("sortable")) { return; }
+      head.onclick = function () { dir = column === index && dir === 1 ? -1 : 1; column = index; page = 0; render(); };
+    });
+    render();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll("table.sortable"), init);
+})();
+</script>
+```
+
 ## callout · 提示框
 
 什么时候用：有一句「别踩这个坑 / 这条最重要」需要插在正文中间；加 callout-warn 变成注意事项。
@@ -131,6 +230,30 @@
 ```html
 <div class="bar-label"><span>力量</span><span>60%</span></div>
 <div class="bar"><div class="bar-fill" style="width:60%"></div></div>
+```
+
+## chart-bars · 柱状图
+
+什么时候用：几个同类量在时间/分类上高低对比（每周训练次数、各月支出）。纯 CSS，无脚本；柱高写百分比。
+
+```html
+<div class="chart-bars">
+  <div class="chart-col"><span class="chart-val">5</span><div class="chart-bar" style="height:62%"></div><span class="chart-x">W1</span></div>
+  <div class="chart-col"><span class="chart-val">6</span><div class="chart-bar" style="height:76%"></div><span class="chart-x">W2</span></div>
+  <div class="chart-col"><span class="chart-val">4</span><div class="chart-bar alt" style="height:48%"></div><span class="chart-x">W3</span></div>
+  <div class="chart-col"><span class="chart-val">7</span><div class="chart-bar" style="height:88%"></div><span class="chart-x">W4</span></div>
+</div>
+```
+
+## chart-donut · 环形进度
+
+什么时候用：单一比例（完成度、预算已用、占比）；百分比写在 style 的 --p 上（如 72%），中间洞里的数字要一致。
+
+```html
+<div class="chart-donut">
+  <div class="donut" style="--p:72%"><div class="donut-hole">72%</div></div>
+  <div class="chart-legend">本周训练完成度<b>18 / 25 次</b>还差 7 次，优先补两次力量</div>
+</div>
 ```
 
 ## kv · 键值表
