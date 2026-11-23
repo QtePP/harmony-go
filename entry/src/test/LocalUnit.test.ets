@@ -10,6 +10,7 @@ import { decodeEnvelope, encodeEnvelope, keepRemainder, makeEnvelope, takeLines 
 import { compactCount, dayKey, mergeUsage, usageTotal, UsageDay } from '../main/ets/model/Usage';
 import { spokenForm } from '../main/ets/common/ReadAloud';
 import { extOf, fallbackUtd, nameOf } from '../main/ets/common/FileShare';
+import { modelsFromBody, ModelEntry } from '../main/ets/common/ModelCatalog';
 
 /**
  * Tests for the pure projections and formatters.
@@ -398,4 +399,37 @@ export default function localUnitTest() {
       expect(goalFromJson(created, 'get_goal', '{}') === null).assertTrue();
     });
   });
+  describe('modelCatalog', () => {
+    it('decodes the OpenAI-shaped listing with names and descriptions', 0, () => {
+      const body = '{"data":[{"id":"deepseek-flash","name":"DeepSeek-V4.1-Flash","description":"fast"},' +
+        '{"id":"deepseek-v4-pro","name":"DeepSeek-V4-Pro"}]}';
+      const entries: ModelEntry[] = modelsFromBody(body);
+      expect(entries.length).assertEqual(2);
+      expect(entries[0].id).assertEqual('deepseek-flash');
+      expect(entries[0].name).assertEqual('DeepSeek-V4.1-Flash');
+      expect(entries[0].description).assertEqual('fast');
+      expect(entries[1].name).assertEqual('DeepSeek-V4-Pro');
+      expect(entries[1].description).assertEqual('');
+    });
+
+    it('falls back to the id when a name is missing', 0, () => {
+      const entries = modelsFromBody('{"data":[{"id":"m-1"}]}');
+      expect(entries.length).assertEqual(1);
+      expect(entries[0].name).assertEqual('m-1');
+    });
+
+    it('drops entries without an id and de-duplicates the rest', 0, () => {
+      const entries = modelsFromBody('{"data":[{"name":"no id"},{"id":"a"},{"id":"a"},{"id":"  "}]}');
+      expect(entries.length).assertEqual(1);
+      expect(entries[0].id).assertEqual('a');
+    });
+
+    it('returns nothing for an empty, malformed or non-listing body', 0, () => {
+      expect(modelsFromBody('').length).assertEqual(0);
+      expect(modelsFromBody('not json').length).assertEqual(0);
+      expect(modelsFromBody('{"data":{}}').length).assertEqual(0);
+      expect(modelsFromBody('{"error":"invalid key"}').length).assertEqual(0);
+    });
+  });
+
 }

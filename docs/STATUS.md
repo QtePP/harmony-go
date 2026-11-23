@@ -12,6 +12,26 @@
 
 ---
 
+- **「现在的模型不对」——根因是两个，不是一个（2026-11-23，手机 CMM-AL10）**。用户反馈模型不对，要求
+  「按 API Key 取有什么模型再选」。取证后发现：
+  1. **默认 id 是错的**：`AppConfig.MODEL = 'deepseek-v4-flash'`，而 dsh 0.2.2-rc.5 的
+     `dsh-llm-deepseek` 目录里 `DEFAULT_MODELS` 只有 **`deepseek-flash`**（DeepSeek-V4.1-Flash，
+     唯一 `inputModalities` 含 image）与 **`deepseek-v4-pro`**。该常量只用于 **SDK profile** 的
+     `initialize`（`NodeHost.ets:185`），等于一直送一个 provider 不认识的 id；设置页又把它显示成
+     「当前模型」，看起来像权威值。
+  2. **设置页「模型」是自由文本框**，没有来源也没有校验（真机 `ui layout` 读到
+     `TextInput "deepseek-v4-flash"`）。
+  **注意 ACP 路径本来是对的**：会话内选择器由 `session/new` 返回的 `configOptions` 驱动，而
+  `configOptions` 来自 `this.llm.listModels(provider.id)`（`dsh-acp/lib/index.js:393`）——即服务端
+  实时清单。所以「不对」的是 SDK 默认值与设置页，不是 ACP。
+  **修法**：新增 `common/ModelCatalog.ets`，用 Key 打 `https://api.deepseek.com/models`
+  （dsh 自己用 `new URL("/models", origin)`，baseURL 是 `https://api.deepseek.com/anthropic`，
+  origin 相同），设置页改成「刷新列表 + 真实清单（名称/说明/id/当前）」，打开即自动拉一次；
+  拉取失败保留原选择。默认值改 `deepseek-flash`。`modelsFromBody()` 纯函数 4 条单测。
+  **验证**：ArkTS 48 文件通过、`hvigorw test` 0 断言失败、`devecocli build` 成功。
+  **未做真机验证**：拉取需要真实 Key，而并发改名（`com.qtepp.harmonygo`）后新包是新 prefs，
+  旧包的 Key 不会带过去；等新包首次填入 Key 时再看一次清单。
+
 - **设置页填 GitHub token → `push` 能读到：真机闭环（2026-11-23，手机 CMM-AL10）**。设置页新增
   「GitHub Token（用于 git push）」输入框，存 preferences 并镜像到 `dsh-home/.git-token`。真机实证：
   输入 23 字符 → 点「保存」→ 设备上 `stat` 到 **`.git-token` 23 字节、内容 `ghp_plumbing_probe_1123`**

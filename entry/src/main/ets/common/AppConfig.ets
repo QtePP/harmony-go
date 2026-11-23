@@ -20,7 +20,17 @@ interface SecretsFile {
 export class AppConfig {
   static readonly BRIDGE_PORT: number = 4517
   static readonly PROVIDER: string = 'deepseek-official'
-  static readonly MODEL: string = 'deepseek-v4-flash'
+  /**
+   * Fallback model id, used only until the real catalog arrives.
+   *
+   * `deepseek-flash` is the id dsh's provider catalog declares
+   * (DeepSeek-V4.1-Flash, the one whose inputModalities include image). The
+   * previous value `deepseek-v4-flash` is not in that catalog, so the SDK
+   * profile handed `initialize` an id the provider had to reject. Settings now
+   * fetches the list with the API key; this constant only covers the window
+   * before a fetch succeeds.
+   */
+  static readonly MODEL: string = 'deepseek-flash'
   static readonly STORE: string = 'dsh_settings'
   static readonly PROFILE_SDK: string = 'sdk'
   static readonly PROFILE_ACP: string = 'acp'

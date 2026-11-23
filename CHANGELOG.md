@@ -37,6 +37,18 @@
   真机（手机 CMM-AL10）：填假 token → 保存 → `dsh-home/.git-token` 出现且内容一致；冷启后
   `bridge.log` 打出 `key: .git-token tightened to 0600 (was 644)`；清空后保存 → 文件被删除。
 
+- **模型不再硬编码：按 API Key 拉 `GET /models` 再选（并修掉一个不存在的默认 id）**。根因有两个：
+  ①`AppConfig.MODEL` 写死 **`deepseek-v4-flash`**，而 dsh 的 provider 目录里只有 **`deepseek-flash`**
+  （DeepSeek-V4.1-Flash，唯一 inputModalities 含 image 的）与 **`deepseek-v4-pro`**——SDK profile 的
+  `initialize` 一直在送一个 provider 不认识的 id，设置页还把它显示成「当前模型」；
+  ②设置页「模型」是**自由文本框**，没有校验、没有来源，谁也不知道账号实际能用什么。
+  现在：新增 `common/ModelCatalog.ets`，用保存的 Key 请求 **`https://api.deepseek.com/models`**
+  （与 dsh 自己 `new URL("/models", origin)` 同一端点），设置页显示「刷新列表」+ 真实清单（名称 /
+  说明 / id / 「当前」），选中即写入；打开设置时若已有 Key 会自动拉一次；拉取失败**保留原有选择**
+  （列表是用来帮人选的，不该变成新的锁死方式）。默认值改为 `deepseek-flash`，只在拉取成功前兜底。
+  `modelsFromBody()` 是纯函数，4 条单测（名称回落 id、无 id 丢弃、重复去重、空/坏 body 返回空）。
+  **边界**：列表来自账号，不是随包发布；ACP 的会话内选择器仍以 `configOptions` 为权威（两者一致）。
+
 - **GitHub token 可在设置页填，`push` 能读到（真机验成）**：新增「GitHub Token（用于 git push）」输入框，
   存 preferences 并镜像到 `dsh-home/.git-token`。设备实证：输入 → 点「保存」→ `stat` 到
   `.git-token` 23 字节、内容与输入一致。`readToken()` 补 4 条单测（优先 `.git-token`、回落

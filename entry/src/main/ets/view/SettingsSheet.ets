@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit'
 import { InteropSheet } from './InteropSheet'
 import { PluginRow } from '../model/PluginCatalog'
 import { AppConfig } from '../common/AppConfig'
+import { fetchModels, ModelEntry } from '../common/ModelCatalog'
 import { LocalModel, LocalModelStore, scanLocalModels } from '../common/LocalModel'
 import { PluginConfig } from '../common/PluginConfig'
 import { THEMES, ThemeOption } from '../common/Theme'
@@ -15,6 +16,10 @@ export struct SettingsSheet {
 
   @State apiKey: string = ''
   @State gitToken: string = ''
+  /** Catalog fetched with the saved key; empty until a fetch succeeds. */
+  @State modelChoices: ModelEntry[] = []
+  @State modelLoading: boolean = false
+  @State modelNote: string = '点「刷新列表」用当前 API Key 拉取可用模型'
   @State model: string = ''
   @State profile: string = 'sdk'
   @State permissionMode: string = 'workspace-write'
@@ -57,9 +62,55 @@ export struct SettingsSheet {
   /** Transcript text size id; applied live. */
   onFontLevelChange: (id: string) => void = () => {}
 
+  /**
+   * Ask the provider what this key can use.
+   *
+   * Runs with the key currently in the field (not the saved one) so a user who
+   * just pasted a key can see the list before saving. A failure keeps the
+   * existing selection: the point of the list is to inform a choice, not to
+   * become a new way to lock the app out.
+   */
+  private async loadModels(): Promise<void> {
+    const key = this.apiKey.trim()
+    if (key.length === 0) {
+      this.modelNote = '先填上面的 API Key，再刷新'
+      return
+    }
+    this.modelLoading = true
+    this.modelNote = '拉取中…'
+    try {
+      const entries = await fetchModels(key)
+      if (entries.length === 0) {
+        this.modelChoices = []
+        this.modelNote = '没拿到列表：Key 无效、无网络，或该 Key 没有可用模型'
+        return
+      }
+      this.modelChoices = entries
+      this.modelNote = ''
+      // A saved id that is not in the list cannot be used; move to the first.
+      let present = false
+      for (const entry of entries) {
+        if (entry.id === this.model) {
+          present = true
+          break
+        }
+      }
+      if (!present) {
+        this.model = entries[0].id
+      }
+    } finally {
+      this.modelLoading = false
+    }
+  }
+
   aboutToAppear(): void {
     this.apiKey = this.initialKey
     this.gitToken = this.initialGitToken
+    // Fill the list on open when a key is already stored; a failure only sets
+    // the note, so the sheet stays usable offline.
+    if (this.apiKey.trim().length > 0) {
+      void this.loadModels()
+    }
     this.model = this.initialModel
     this.profile = this.initialProfile === 'acp' ? 'acp' : 'sdk'
     this.permissionMode = AppConfig.normalizePermissionMode(this.initialPermission)
@@ -146,14 +197,69 @@ export struct SettingsSheet {
         .alignItems(HorizontalAlign.Start)
         .width('100%')
 
-        Column({ space: 6 }) {
-          Text('模型').fontSize(12).fontColor($r('app.color.text_secondary'))
-          TextInput({ text: this.model, placeholder: 'deepseek-v4-flash' })
-            .fontSize(14)
-            .height(44)
-            .onChange((value: string) => {
-              this.model = value
-            })
+        Column({ space: 8 }) {
+          Row({ space: 10 }) {
+            Text('模型').fontSize(12).fontColor($r('app.color.text_secondary'))
+            Blank()
+            Button(this.modelLoading ? '拉取中…' : '刷新列表')
+              .fontSize(12)
+              .height(30)
+              .backgroundColor($r('app.color.surface_muted'))
+              .fontColor($r('app.color.text_primary'))
+              .enabled(!this.modelLoading)
+              .onClick(() => {
+                void this.loadModels()
+              })
+          }
+          .width('100%')
+
+          // The list comes from GET /models with the saved key, so it reflects
+          // what this account may actually call. It is not shipped with the app:
+          // a hardcoded id (`deepseek-v4-flash`) used to be shown here and was
+          // not a model the provider knows.
+          if (this.modelChoices.length > 0) {
+            Column({ space: 2 }) {
+              ForEach(this.modelChoices, (entry: ModelEntry) => {
+                Row({ space: 8 }) {
+                  Column({ space: 2 }) {
+                    Text(entry.name)
+                      .fontSize(13)
+                      .fontColor($r('app.color.text_primary'))
+                    if (entry.description.length > 0) {
+                      Text(entry.description)
+                        .fontSize(10)
+                        .fontColor($r('app.color.text_tertiary'))
+                        .maxLines(2)
+                    }
+                    Text(entry.id)
+                      .fontSize(10)
+                      .fontColor($r('app.color.text_tertiary'))
+                  }
+                  .alignItems(HorizontalAlign.Start)
+                  .layoutWeight(1)
+                  if (entry.id === this.model) {
+                    Text('当前')
+                      .fontSize(11)
+                      .fontColor(this.accent)
+                  }
+                }
+                .width('100%')
+                .padding({ top: 6, bottom: 6 })
+                .onClick(() => {
+                  this.model = entry.id
+                })
+              }, (entry: ModelEntry) => entry.id)
+            }
+            .width('100%')
+          } else {
+            Text(this.modelNote)
+              .fontSize(11)
+              .fontColor($r('app.color.text_tertiary'))
+          }
+
+          Text(`当前：${this.model}`)
+            .fontSize(11)
+            .fontColor($r('app.color.text_tertiary'))
         }
         .alignItems(HorizontalAlign.Start)
         .width('100%')
