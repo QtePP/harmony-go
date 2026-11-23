@@ -234,3 +234,38 @@ node .build/payload/node_modules/@deepseek-ai/dsh/lib/bin.js --profile sdk --dum
 ```
 
 App 代码不需要改：载荷版本与 App 解耦，`payload.stamp` 变化会自动重新解包。
+
+---
+
+## 6. 鸿蒙 PC（2in1）迁移
+
+> 现状：`deviceTypes` 已声明 `2in1`，840vp 断点已按形态切换单/双栏，但**从未在鸿蒙 PC 真机验收**
+> —— 手机与平板的验收不能外推成 PC 结论。下面是把它做成「已验证」的最短路径。
+
+### 6.1 待验证清单
+
+| # | 项 | 期望 | 失败时看 |
+|---|---|---|---|
+| 1 | 安装与签名 | `devecocli run` 装上、能启动；发布包走 AGC | `docs/BUILD.md` §签名 |
+| 2 | 载荷解包 | 首次启动解包 ≈240MB 载荷 ≤ 60s，`payload.stamp` 落盘 | `bridge.log`、`node.log` |
+| 3 | 运行时 | `bridge-status.json`：Node v24.2.0、arm64、`wasm: false` | 与手机同构，理论无差异 |
+| 4 | 窗口形态 | 默认窗口不裁切；拉宽 ≥840vp 进双栏、缩窄回单栏；最小尺寸下输入行可用 | `Index.ets` 断点、手动拖拽 |
+| 5 | 键盘 | 中英输入、Enter 发送、Shift+Enter 换行、Esc 关面板 | `ChatView` 输入框实现 |
+| 6 | 鼠标/触控板 | 悬停态、点击命中区、滚轮滚动对话与代码块 | 组件 `hoverEffect` |
+| 7 | 文件与产物 | 文件面板选中、HTML 预览、导出长图/PDF、系统分享面板 | `FileViewer`、`PageExport` |
+| 8 | 悬浮窗/多窗口 | 拖动、分屏、后台不冻死运行时（与手机同样限制） | `PythonRuntime` 已知后台冻结 |
+| 9 | 星闪/WiFi 同步 | PC ↔ 手机互传项目文件与会话 | `docs/PROJECT-SYNC.md` |
+| 10 | Office/Python | dx 预览；Python 开关开启后 `tools(N)` 变化 | `docs/OFFICE.md`、`docs/PYTHON.md` |
+
+### 6.2 可能需要改的地方（预判）
+
+- **键鼠语义**：输入框的 Enter 发送在 PC 上要保留 Shift+Enter 换行；右键/长按菜单需要右键映射。
+- **窗口最小尺寸**：单栏宽度下的组件（顶栏 4 个图标 + 标题）要能压缩，不能出现重叠。
+- **默认窗口大小**：首次启动给一个 ≥840vp 的窗口，避免用户第一次看到的是挤压版单栏。
+- **安装渠道**：鸿蒙 PC 走 AGC 时同样只收 `.app` 容器签名，打包脚本无需改，验证一遍即可。
+- **性能**：PC 端 CPU 更强，可考虑放宽 Python 超时、开启更大 `maxPackMb`（仅配置，不动架构）。
+
+### 6.3 验收后要更新的文档
+
+`AGENTS.md` §7.1（形态覆盖率一句话）、`docs/STATUS.md`（PC 条目 + 设备型号）、
+`docs/POSITIONING.md` §5（把「未验证」改为「已验证」）、README 的形态描述。

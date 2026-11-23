@@ -21,6 +21,16 @@
 
 ## 这是什么
 
+**HarmonyGo 把完整的 dsh agent 运行时（Node v24.2.0 + 676 个依赖）装进 HarmonyOS 应用进程** —— 手机、平板、2in1 都能不连电脑直接跑 agent，并带端侧个人本体、Office/Python、产物导出与星闪/WiFi 同步。
+
+三件事说清楚它：
+
+- **运行时**：同进程内嵌 Node 与 dsh，绕开鸿蒙「禁 fork/exec、`--jitless` 无 WASM」的宿主限制；agent 在设备本地运行（模型 API 仍联网）。
+- **记忆**：端侧 SQLite 个人本体，身份 / 过敏 / 偏好等**硬约束**跨会话自动带上，其余按需查询；可导出、可跨设备同步。
+- **协作面**：项目文件、会话缓存、本体 bundle 可经 **WiFi 或星闪** 在两台设备间同步；产物是原生 HTML / Office 文件，可导出长图 / PDF 再分享。
+
+> 对外口径、已验证 / 实验 / 边界清单见 [docs/POSITIONING.md](docs/POSITIONING.md)；鸿蒙 PC（2in1）待办见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+
 本仓库是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）的**鸿蒙外壳**：
 
 - **原生 ArkUI 界面**，不是 WebView 包壳
@@ -34,6 +44,8 @@
 
 <details>
 <summary>English</summary>
+
+**HarmonyGo embeds a full dsh agent runtime — Node v24.2.0 and its dependency tree — inside a HarmonyOS app process**, so phones, tablets and 2in1 devices run an agent on-device without tethering. It adds an on-device personal ontology (SQLite), Office/Python tooling, HTML artifact export, and device-to-device sync over Wi-Fi or NearLink.
 
 This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`):
 
