@@ -811,6 +811,47 @@ function installSharpStub() {
   log('sharp-stub: require("sharp") redirected to pure-JS stub (pass-through images only)')
 }
 
+/**
+ * Facts the model cannot learn by looking, seeded once into $DSH_HOME/AGENTS.md.
+ *
+ * `dsh-agent-instructions` treats that file as durable context for every
+ * session, so this is the only place to say "there is no shell here" once
+ * instead of letting the model discover it three wasted steps at a time: on
+ * device it called `bash` (never registered), then went looking for
+ * `~/.git-token` (outside the workspace, so `glob` refused and `read` found
+ * nothing) before finally cloning. Four red rows in the trace, none of them a
+ * broken tool.
+ *
+ * Written only when the file is absent. The same file is where
+ * `@ohos/dsh-tool-user-profile` keeps its managed block, so overwriting it on
+ * every boot would erase what the model has learned about the user — and the
+ * user is allowed to delete or rewrite this file.
+ */
+const PLATFORM_NOTES = [
+  '# 这个设备上的事实（HarmonyGo 外壳写入，可删可改）',
+  '',
+  '- **没有 shell**：`bash` / `pwsh` / `jobs` 没有注册，调用会得到 `unknown tool`。要用命令行做什么，改用 `read` / `write` / `edit` / `glob` / `grep` / `git`。',
+  '- **文件工具只能进工作区**：`~`、`/data/storage/el2/base/files`、`dsh-home` 都在工作区之外，`glob` / `read` 会返回 `escapes the session workspace` 或 `not found`。',
+  '- **仓库**：`git` 工具把仓库克隆到工作区的 `repos/<owner>-<name>/`；引用仓库内的文件用仓库相对路径即可（例如 `docs/STATUS.md`）。',
+  '- **push 的 token**：由 `git` 工具自己从 `dsh-home/.git-token` 读取，不需要去找，也没有 shell 可以查；没有 token 时它返回 `GIT_NO_TOKEN`。',
+  ''
+].join('\n')
+
+function seedPlatformNotes() {
+  const file = path.join(DSH_HOME, 'AGENTS.md')
+  try {
+    if (fs.existsSync(file)) {
+      return
+    }
+    fs.mkdirSync(DSH_HOME, { recursive: true })
+    fs.writeFileSync(file, PLATFORM_NOTES, { mode: 0o600 })
+    log('instructions: seeded platform notes into AGENTS.md')
+  } catch (error) {
+    // A missing seed only costs the model a few guesses; never fail the boot.
+    log(`instructions: could not seed AGENTS.md (${error && error.message})`)
+  }
+}
+
 function main() {
   rerouteConsole()
   installRequireBuiltinAlias()
@@ -821,6 +862,7 @@ function main() {
   installUserStorageCopyFallback()
   installFileHandleFallbacks()
   tightenKeyFile()
+  seedPlatformNotes()
   const templateReady = installProfileTemplate()
   if (PROFILE === 'acp' && templateReady) {
     PROFILE = 'ohos'

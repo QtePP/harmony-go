@@ -69,6 +69,17 @@
   `manager.getPairedDevices()` 的地址）再验字节通道。为此新增的测试用例默认无 `role` 参数时直接通过，
   不拖累 `bash scripts/test.sh device`。
 
+- **「本机事实」写进 dsh-home/AGENTS.md，让模型别再拿 shell 去猜（2026-11-23 17:20–17:45，手机 CMM-AL10）**。
+  上一轮把四条失败的**文案**修好了（轨迹行显示原因），但那是事后解释；这一轮治根：模型之所以去叫 `bash`、去 `~/.git-token`
+  乱找，是因为**它不知道这台设备的规矩**。`@deepseek-ai/dsh-agent-instructions` 每次会话第一条请求前会把
+  **`$DSH_HOME/AGENTS.md`**（代码里就叫 user-global 目录，`lib/index.js` 第 175 行判的就是这个路径）拼进 durable 上下文，
+  所以 `host/bootstrap.cjs` 在开机时**只在该文件不存在时**写一份四行事实：没有 shell（bash/pwsh/jobs 未注册）、
+  文件工具只能进工作区、仓库落在 `repos/<owner>-<name>`、push 的 token 由 git 工具自己从 `dsh-home/.git-token` 读。
+  **不覆盖**已有文件——同一个文件是 `@ohos/dsh-tool-user-profile` 的受管区块所在地，每次启动重写会把用户画像抹掉。
+  证据：手机 `dsh-home/AGENTS.md` 782 B、0600（`bridge.log` 有 `instructions: seeded platform notes into AGENTS.md`）；
+  指令候选清单与 `$DSH_HOME/AGENTS.md` 的 user-global 判定都在插件源码里核实过。**行为效果要看下一次新会话**，
+  本轮没在真机上跑一轮完整对话去对比（上一次跑的时候 UI 自动化又把点击吃掉了）。
+
 - **轨迹里的「失败」逐条查清了：四条都不是工具坏了（2026-11-23 17:15–17:35，手机 CMM-AL10）**。
   用户报：git clone/push 那一轮轨迹里有失败。把设备上的 `preferences/dsh_sessions` 拉下来逐条读，真实文案是：
   ① `调用 git` → `repos/qtepp-harmony-go is not cloned yet; use action "clone" or "snapshot"`（模型先问 status、后 clone，时序错）；
