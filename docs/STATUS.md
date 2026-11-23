@@ -28,13 +28,23 @@
   **设置面板（0bb8f02）**：`SheetSize.LARGE` 在这台手机上只有约半屏，加了 GitHub Token 字段后
   `保存` 落到屏外且面板不滚——`height: '92%'` 之后 `Scroll` 占满 `[0,348,1320,2848]`，滚到底
   `保存`/`诊断` 在 y=1181–1316 可见可点，Token 字段与「写入 dsh-home/.git-token」说明都在首屏。
+  **Token 字段在设备上完整往返（09:21–09:24）**：填一个假 token `ghp_faketoken_verify_1234` →
+  保存 → 设备侧 `dsh-home/.git-token` 立刻出现、内容就是那 25 字节；`aa force-stop` 冷启后
+  `bridge.log` 打出 `key: .git-token tightened to 0600 (was 644)`，`ls -l` 确认变成 `-rw-------`，
+  设置页重启后仍回填该 token（preferences 往返），`.api-key` 的 0600 不受影响。
+  再用「长按输入框 → 全选 → DEL」清空 → 保存 → 文件被 `unlink`（`ls` 报
+  `No such file or directory`）——**清空路径也验了**：填错 token 若不能改，用户只能重装应用，
+  这是这个功能最容易漏的失败路径。
   **四个坑**：(1) `devecocli ui longclick`（约 500ms 按压）在这台手机上**不触发**
   `LongPressGesture`，`hdc shell uitest uiInput longClick x y` 才触发——手机上写 UI 自动化直接用
   uitest；(2) `uinput -K -d 2 -u 2` 在这套系统上是 **BACK**，用来收键盘不会把 App 踢到后台
   （平板上同一个键是 HOME，别照抄）；(3) 顶部常驻通知横幅会盖住 header，测试中途另一个 App
   （「手表离线地图」）抢了前台，用 `aa start -a EntryAbility -b com.qtepp.taharness` 拉回来；
   (4) 面板的**类型**决定它给哪些目标：`uniformTypeDescriptor.getUniformDataTypeByFilenameExtension()`
-  查平台，查空或抛错才落静态表——类型报粗了，本该能收的 App 会被面板筛掉。
+  查平台，查空或抛错才落静态表——类型报粗了，本该能收的 App 会被面板筛掉；
+  (5) 顺带确认 **`hdc shell` 能读应用沙箱、不能写**：`ls -l`/`cat`/`grep`
+  `/data/app/el2/100/base/com.qtepp.taharness/haps/entry/files/dsh-home/…` 都成功，
+  排查 `.git-token`、`.api-key`、`bridge.log` 不必只靠应用内「诊断」页。
 
 - **`git` 走设备自己的系统代理（2026-11-20 16:20，MatePad Mini）**。起因是用户问「我的手机没翻墙
   你咋拉代码」——我先取证再回答，结论与我原来的假设相反：**平板是直连的，没走我的 Mac**。

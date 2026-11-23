@@ -23,6 +23,8 @@
   设置页新增 GitHub Token 字段（密码框），存 preferences 并**镜像到 `dsh-home/.git-token`**——`push` 唯一读的路径；
   **不进 env**（`node-bridge` 把子进程环境 dump 进 `node.log`），`bootstrap.cjs` 下次启动把它收到 **0600**
   （ArkTS 没有 chmod）。写入走临时文件 + rename，避免半截 token 被 `push` 读到。
+  真机（手机 CMM-AL10）：填假 token → 保存 → `dsh-home/.git-token` 出现且内容一致；冷启后
+  `bridge.log` 打出 `key: .git-token tightened to 0600 (was 644)`；清空后保存 → 文件被删除。
 
 - **`git` 的 `force` 与 `HEAD~1` 已真机验成（失败路径优先）**：`snapshot`（2.0 MB / 8.7s）→
   `clone` 一个不存在的仓库 `force=true`（传输失败）→ `status` 仍报 `clean (164 paths)`（快照没被动）→
