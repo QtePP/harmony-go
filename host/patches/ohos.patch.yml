@@ -36,7 +36,8 @@
 - id: tool-jobs
   disabled: true
 
-# 默认模型改为多模态 flash：acp-app 捆绑补丁写死 model: deepseek-v4-flash（纯文本），
+# 默认模型改为多模态 flash：acp-app 捆绑补丁写死一个纯文本 id（deepseek-v4-flash —— 这个 id
+# 在 0.2.2-rc.5 的目录里根本不存在，合法的是 deepseek-flash / deepseek-v4-pro），
 # 而 initialize 的 promptCapabilities.image 按启动默认模型冻结——不改这行，
 # 内联图片 prompt 永远被 "not advertised by this connection" 拒绝（-32602）。
 # deepseek-flash = DeepSeek-V4.1-Flash，目录里唯一 inputModalities 含 image 的模型。

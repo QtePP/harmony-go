@@ -12,6 +12,18 @@
 
 ---
 
+- **模型清单真机闭环（2026-11-23，手机 CMM-AL10 / `com.qtepp.harmonygo` 新包）**：设置页打开即用
+  已保存的 Key 拉一次 `GET https://api.deepseek.com/models`，`ui layout` 读到**真实两项**：
+  `DeepSeek-V4.1-Flash`（id `deepseek-flash`，标「当前」）、`DeepSeek-V4-Pro`（id `deepseek-v4-pro`）。
+  点 Pro → 标记与「当前：」立刻跟到 `deepseek-v4-pro` → 点「保存」→ 面板关闭、`.api-key` 时间戳更新，
+  并从设备 preferences（`haps/entry/preferences/dsh_settings`）读到
+  `<string key="model">deepseek-v4-pro</string>`。**反证也验到了**：中途只选不保存，重开面板回到
+  `deepseek-flash`——未保存的选择不会持久化，符合预期。
+  **同一轮给出的口径**：列表来自**账号**不是随包发布；ACP 的会话内选择器仍以服务端 `configOptions`
+  为权威（`dsh-acp` 用 `llm.listModels`），两者应当一致，不一致时以 ACP 返回的为准。
+  **同时纠正一条旧记录**：catalog 里 `deepseek-flash` 才是 DeepSeek-V4.1-Flash，
+  `deepseek-v4-flash` 从来不是合法 id；旧文档曾把它当「纯文本」写进补丁注释，已改。
+
 - **设置里的模型名修正之后，把老设备里存的假 id 迁移掉（2026-11-23 10:23，手机 CMM-AL10）**。
   同一天的 `6da2e63` 把「模型」从写死的假 id 换成按 Key 拉 `/models` 的列表，但它**没处理已经存进
   preferences 的旧值**：那个月点过「保存」的设备，`dsh_settings` 里仍然是 `deepseek-v4-flash`，
