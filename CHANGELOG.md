@@ -37,6 +37,23 @@
   真机（手机 CMM-AL10）：填假 token → 保存 → `dsh-home/.git-token` 出现且内容一致；冷启后
   `bridge.log` 打出 `key: .git-token tightened to 0600 (was 644)`；清空后保存 → 文件被删除。
 
+- **思考深度（reasoning effort）可选了**：`configOptions` 里一直有 `reasoning_effort`（`dsh-acp` 用
+  `resolveModelInfo` 的 `defaultEffort` + `efforts` 生成，含「Provider default」一项），但客户端只
+  读了 `model`，**这个通道被整个丢掉**——用户只能接受 provider 默认值。现在：`applyAcpConfig`
+  一并接管 effort，输入框旁出现短标签按钮（`思考/低/中/高/最高`），点开是完整列表（带说明与「当前」），
+  选中走 `session/set_config_option('reasoning_effort')`，**响应里的 configOptions 是权威列表**，
+  照旧整份重建。模型不支持 reasoning 时后端不推这个选项 ⇒ 按钮**整个消失**（不留死控件）。
+  协议词 `off/low/high` 不直接给人看（与 dsh-go 的 `effortLabel` 同因）。
+
+- **逐 provider 的「为什么没模型」有答案了**：`dsh-acp` 的 per-provider `catch` **把错误对象扔了**
+  （只留 `options: []`），随后 `groups.filter(group => group.options.length > 0)` 又把空组**整组删除**
+  ——所以客户端收到的 `configOptions` 里，故障 provider **连空组都不存在**，不是「列出来但没模型」。
+  纯客户端不可能知道原因。修法在运行时侧：`@ohos/dsh-boot-report` 新增 `describeProviders()`，在
+  过滤器之前逐个 `llm.listModels(provider.id)`，输出
+  `[boot-report] models: deepseek-official=0, deepseek-account=0` 或
+  `id=failed(原因)`（单行、120 字符截断）。本地 runtime 实测已给出真实结论：**两个 provider 都是 0**。
+  单测 20 → **25**（计数、保留原因、多行压平并截断、非 Error 拒绝、零 provider）。
+
 - **模型不再硬编码：按 API Key 拉 `GET /models` 再选（并修掉一个不存在的默认 id）**。根因有两个：
   ①`AppConfig.MODEL` 写死 **`deepseek-v4-flash`**，而 dsh 的 provider 目录里只有 **`deepseek-flash`**
   （DeepSeek-V4.1-Flash，唯一 inputModalities 含 image 的）与 **`deepseek-v4-pro`**——SDK profile 的

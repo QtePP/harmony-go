@@ -162,6 +162,11 @@ struct Index {
   @State modelLabel: string = ''
   @State showModelSheet: boolean = false
   @State modelChoices: AcpModelChoice[] = []
+  /** Reasoning-effort choices from the same configOptions; empty = none. */
+  @State effortChoices: AcpModelChoice[] = []
+  @State currentEffortValue: string = ''
+  @State effortLabel: string = ''
+  @State showEffortSheet: boolean = false
   @State approvalVisible: boolean = false
   /** First-launch mode question: shown once, before the runtime boots. */
   @State firstRunVisible: boolean = false
@@ -1875,6 +1880,11 @@ struct Index {
    * made, so every response rebuilds the picker; a cached list goes stale.
    */
   private applyAcpConfig(result: AcpSessionNewResult): void {
+    // Reasoning effort rides the same configOptions response (dsh-acp emits it
+    // from resolveModelInfo with defaultEffort + efforts). It used to be
+    // dropped here, so the only reasoning control the user had was whatever
+    // the provider defaulted to.
+    this.applyEffort(findConfigOption(result.configOptions, 'reasoning_effort'))
     const model = findConfigOption(result.configOptions, 'model')
     if (model === null) {
       this.showModelPicker = false
@@ -1891,6 +1901,87 @@ struct Index {
     }
     this.modelLabel = label.length === 0 ? '模型' : label
     this.showModelPicker = this.modelChoices.length > 1
+  }
+
+  /**
+   * Adopt the reasoning-effort option, or clear it when the route has none.
+   *
+   * Absent means the selected model declares no reasoning at all (dsh-acp only
+   * pushes the option when `resolveModelInfo` returns reasoning), so the
+   * control must disappear rather than show a stale list from another model.
+   */
+  private applyEffort(option: AcpConfigOption | null): void {
+    if (option === null) {
+      this.effortChoices = []
+      this.currentEffortValue = ''
+      this.effortLabel = ''
+      return
+    }
+    this.effortChoices = flattenChoices(option.options)
+    this.currentEffortValue = option.currentValue === undefined ? '' : option.currentValue
+    let label = ''
+    for (const choice of this.effortChoices) {
+      if (choice.value === this.currentEffortValue) {
+        label = choice.name
+        break
+      }
+    }
+    this.effortLabel = label.length === 0 ? '思考深度' : label
+  }
+
+  /**
+   * Human label for one effort choice.
+   *
+   * The protocol words (`off` / `low` / `high`) are not what a person reads;
+   * dsh-go maps them in `effortLabel` for the same reason. The server usually
+   * sends a `name`, so this only covers the cases where it did not.
+   */
+  private effortName(choice: AcpModelChoice): string {
+    if (choice.name.length > 0 && choice.name !== choice.value) {
+      return choice.name
+    }
+    if (choice.value === 'off') {
+      return '关闭'
+    }
+    if (choice.value === 'minimal') {
+      return '最低'
+    }
+    if (choice.value === 'low') {
+      return '低'
+    }
+    if (choice.value === 'medium') {
+      return '中'
+    }
+    if (choice.value === 'high') {
+      return '高'
+    }
+    if (choice.value === 'xhigh') {
+      return '很高'
+    }
+    if (choice.value === 'max') {
+      return '最高'
+    }
+    return choice.name.length > 0 ? choice.name : choice.value
+  }
+
+  /** Switch reasoning effort; the response carries the authoritative list. */
+  private async pickEffort(choice: AcpModelChoice): Promise<void> {
+    this.showEffortSheet = false
+    if (choice.value === this.currentEffortValue) {
+      return
+    }
+    if (!this.openedSessions.has(this.currentId)) {
+      this.append(new ChatMessage(newSessionId(), Role.SYSTEM,
+        '会话尚未在服务端激活，请先发送一条消息。', '思考深度'))
+      return
+    }
+    try {
+      const response = await this.host.acp.setConfigOption(this.currentId, 'reasoning_effort', choice.value)
+      this.applyAcpConfig(response as AcpSessionNewResult)
+    } catch (error) {
+      this.append(new ChatMessage(newSessionId(), Role.SYSTEM,
+        `切换思考深度失败：${(error as Error).message}`, '思考深度'))
+    }
   }
 
   private async pickModel(choice: AcpModelChoice): Promise<void> {
@@ -2698,6 +2789,8 @@ struct Index {
                 projectName: this.currentProjectName(),
                 showModelPicker: this.showModelPicker,
                 modelLabel: this.modelLabel,
+                showEffortPicker: this.effortChoices.length > 0,
+                effortLabel: this.effortLabel,
                 canStop: this.host.isAcp(),
                 shareText: this.shareText,
                 attachPaths: this.attachPaths,
@@ -2721,6 +2814,9 @@ struct Index {
                 },
                 onPickModel: () => {
                   this.showModelSheet = true
+                },
+                onPickEffort: () => {
+                  this.showEffortSheet = true
                 },
                 onStop: () => this.stopAcp(),
                 onDequeue: (index: number) => this.dequeueAt(index),
@@ -2775,6 +2871,8 @@ struct Index {
                 projectName: this.currentProjectName(),
                 showModelPicker: this.showModelPicker,
                 modelLabel: this.modelLabel,
+                showEffortPicker: this.effortChoices.length > 0,
+                effortLabel: this.effortLabel,
                 canStop: this.host.isAcp(),
                 showSessionsEntry: true,
                 shareText: this.shareText,
@@ -2802,6 +2900,9 @@ struct Index {
                 },
                 onPickModel: () => {
                   this.showModelSheet = true
+                },
+                onPickEffort: () => {
+                  this.showEffortSheet = true
                 },
                 onStop: () => this.stopAcp(),
                 onDequeue: (index: number) => this.dequeueAt(index),
@@ -3015,6 +3116,67 @@ struct Index {
         .backgroundColor('rgba(0,0,0,0.4)')
         .onClick(() => {
           this.showModelSheet = false
+        })
+      }
+
+      if (this.showEffortSheet) {
+        Column() {
+          Column({ space: 12 }) {
+            Text('思考深度')
+              .fontSize(16)
+              .fontWeight(FontWeight.Medium)
+            Scroll() {
+              Column({ space: 4 }) {
+                ForEach(this.effortChoices, (choice: AcpModelChoice) => {
+                  Row({ space: 8 }) {
+                    Column({ space: 2 }) {
+                      Text(this.effortName(choice))
+                        .fontSize(14)
+                        .fontColor($r('app.color.text_primary'))
+                      if (choice.description.length > 0) {
+                        Text(choice.description)
+                          .fontSize(11)
+                          .fontColor($r('app.color.text_tertiary'))
+                      }
+                    }
+                    .alignItems(HorizontalAlign.Start)
+                    .layoutWeight(1)
+                    if (choice.value === this.currentEffortValue) {
+                      Text('当前')
+                        .fontSize(11)
+                        .fontColor(this.accent)
+                    }
+                  }
+                  .width('100%')
+                  .padding({ top: 8, bottom: 8 })
+                  .onClick(() => {
+                    void this.pickEffort(choice)
+                  })
+                }, (choice: AcpModelChoice) => choice.value)
+              }
+              .width('100%')
+            }
+            .constraintSize({ maxHeight: 360 })
+            .width('100%')
+            Text('思考深度由所选模型决定；切换模型后列表可能变化，甚至消失（有的模型不支持）。')
+              .fontSize(11)
+              .fontColor($r('app.color.text_tertiary'))
+          }
+          .alignItems(HorizontalAlign.Start)
+          .padding(20)
+          .width('86%')
+          .constraintSize({ maxWidth: 460 })
+          .borderRadius(16)
+          .backgroundColor($r('app.color.background'))
+          .shadow({ radius: 24, color: 'rgba(0,0,0,0.18)', offsetY: 8 })
+        }
+        .width('100%')
+        .height('100%')
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+        .backgroundColor('rgba(0,0,0,0.4)')
+        .onClick(() => {
+          this.showEffortSheet = false
         })
       }
     }

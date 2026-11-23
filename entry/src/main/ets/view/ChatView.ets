@@ -2090,6 +2090,9 @@ export struct ChatView {
   @Prop projectName: string = ''
   @Prop showModelPicker: boolean = false
   @Prop modelLabel: string = ''
+  /** True when the selected model declares reasoning efforts. */
+  @Prop showEffortPicker: boolean = false
+  @Prop effortLabel: string = ''
   @Prop canStop: boolean = false
   @State draft: string = ''
   /** True while the microphone is open; the button doubles as a stop control. */
@@ -2148,6 +2151,24 @@ export struct ChatView {
   /** True when an absolute path sits outside the open project's workspace. */
   onForeignProject: (resolved: string) => string = () => ''
   onPickModel: () => void = () => {}
+  onPickEffort: () => void = () => {}
+
+  /**
+   * The composer has room for one short word, not the server's full name.
+   *
+   * "Provider default" and "Medium" both have to fit a 28px chip; the full
+   * label stays on the button's accessibility text and in the picker.
+   */
+  private effortShortLabel(): string {
+    const label = this.effortLabel
+    if (label.length === 0) {
+      return '思考'
+    }
+    if (label.length <= 4) {
+      return label
+    }
+    return label.substring(0, 4)
+  }
   onStop: () => void = () => {}
   /** Drop one queued turn before it is sent (index into `queued`). */
   onDequeue: (index: number) => void = () => {}
@@ -3261,6 +3282,20 @@ export struct ChatView {
                   }
                 })
                 .onClick(() => this.onPickModel())
+              }
+
+              // Reasoning effort, only when the server offered it for the
+              // selected model: an unsupported model has no such option, and a
+              // dead control is worse than no control.
+              if (this.showEffortPicker) {
+                Button(this.effortShortLabel())
+                  .fontSize(11)
+                  .height(28)
+                  .padding({ left: 10, right: 10 })
+                  .backgroundColor($r('app.color.surface'))
+                  .fontColor($r('app.color.text_secondary'))
+                  .accessibilityText(this.effortLabel.length > 0 ? `思考深度：${this.effortLabel}` : '思考深度')
+                  .onClick(() => this.onPickEffort())
               }
 
               // Dictation sits before the image picker: speaking is the faster
