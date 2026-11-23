@@ -208,16 +208,18 @@
   **「。今天天气不错。」**，日志同时出现 `Infer runModel [Decjoint]` 与 `VadInferEvad`（VAD 在跑）。
   这台设备上之前那条「离线语音引擎验成」只证明了**引擎能启动**，不证明识别出字，本条更正。
 
-- **HTML 里自带的「打印」按钮点了没反应 → 桥到系统打印面板（2026-11-23 17:53，手机 CMM-AL10）**。
-  生成的网页普遍带一个 `onclick="window.print()"` 的打印按钮，在嵌入式 Web 组件里**没人接**，
-  点了自然毫无反应。修法两层：
-  ① `javaScriptProxy` 暴露 `window.dshHost.printPage()`，`onPageEnd` 里把 `window.print` 重写成它
-     （真机日志：`DSH-PRINT hooked host=object` → 点击后 `DSH-PRINT bridge-ok`）；
-  ② 宿主侧把整页导出成单页 PDF，再 `print.print([pdf])` 调系统打印面板。
-  中间踩了一个坑：`print.print` 需要 **`ohos.permission.PRINT`**，没声明时 PrintKit 直接
-  `CheckPermission ... tokenId permission is -1` → `E_PRINT_NO_PERMISSION (201)`，表现是"点了还是没反应"。
-  `module.json5` 声明该权限（install 期授予）后，真机点击打印按钮即弹出系统「打印」页
-  （打印机 / 开始打印 / 另存为 pdf），实测还能走通「另存为 pdf」的文件选择器。
+- **HTML 里的「打印」按钮：先桥接、后按产品意见撤掉（2026-11-23 18:01，手机 CMM-AL10 + 平板 MLR-AL00）**。
+  现象：生成的网页自带一个 `onclick="window.print()"` 的按钮（页面本身是"可打印的计划"，按钮是模型加的，
+  **不是外壳加的**），在嵌入式 Web 里点了没反应。
+  先做了完整桥接：`javaScriptProxy` 暴露 `printPage()`、`onPageEnd` 重写 `window.print`，宿主把整页导出成
+  单页 PDF 再 `print.print` 拉起系统打印面板；中间踩到 `ohos.permission.PRINT` 没声明 → PrintKit 报
+  `E_PRINT_NO_PERMISSION(201)`（表现同样是"点了没反应"），补上权限后打印面板与「另存为 pdf」都通了。
+  **随后按产品意见撤掉**：预览页已经有「导出（整页长图 PNG / 单页 PDF）+ 分享」，页面里再放打印按钮是多余的
+  入口。改动：移除桥接与 `ohos.permission.PRINT`；改为在 `PLATFORM_NOTES`（seed 到 `dsh-home/AGENTS.md`）里
+  写明「生成的网页不要自带打印按钮」，并且 seed 逻辑改成**幂等追加缺失条目**（原来文件存在就跳过，
+  老安装升级拿不到新条目）。
+  真机验证：两台设备的 `dsh-home/AGENTS.md` 都从 782B 变成 **1025B**、新条目各一条（手机 18:01、平板 18:00，
+  都是升级后重新启动时追加的）。
 
 - **HTML 产物导出长图 PNG / 单页 PDF 并分享（2026-11-23 17:45，手机 CMM-AL10）**。
   需求：生成的可视化网页（长页面）想直接发出去，截图只有一屏。

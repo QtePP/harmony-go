@@ -834,6 +834,7 @@ const PLATFORM_NOTES = [
   '- **文件工具只能进工作区**：`~`、`/data/storage/el2/base/files`、`dsh-home` 都在工作区之外，`glob` / `read` 会返回 `escapes the session workspace` 或 `not found`。',
   '- **仓库**：`git` 工具把仓库克隆到工作区的 `repos/<owner>-<name>/`；引用仓库内的文件用仓库相对路径即可（例如 `docs/STATUS.md`）。',
   '- **push 的 token**：由 `git` 工具自己从 `dsh-home/.git-token` 读取，不需要去找，也没有 shell 可以查；没有 token 时它返回 `GIT_NO_TOKEN`。',
+  '- **生成的网页不要自带「打印」按钮**：壳的预览页已经有「导出」（整页长图 PNG / 单页 PDF）和分享；页面里再放一个 `window.print()` 按钮在嵌入式 Web 里点不动，只会让人以为坏了。',
   ''
 ].join('\n')
 
@@ -841,6 +842,19 @@ function seedPlatformNotes() {
   const file = path.join(DSH_HOME, 'AGENTS.md')
   try {
     if (fs.existsSync(file)) {
+      // The file belongs to the user and the model's profile tool, so it is
+      // never rewritten — only a missing note is appended, once. That keeps an
+      // install from a previous version picking up notes added since, without
+      // touching anything the user wrote or the model learned.
+      const current = fs.readFileSync(file, 'utf8')
+      const missing = PLATFORM_NOTES.split('\n').filter((line) => {
+        return line.startsWith('- **') && current.indexOf(line) < 0
+      })
+      if (missing.length === 0) {
+        return
+      }
+      fs.appendFileSync(file, `\n${missing.join('\n')}\n`, { mode: 0o600 })
+      log(`instructions: appended ${missing.length} platform note(s) to AGENTS.md`)
       return
     }
     fs.mkdirSync(DSH_HOME, { recursive: true })

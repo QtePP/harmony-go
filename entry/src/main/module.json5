@@ -16,9 +16,6 @@
         "name": "ohos.permission.INTERNET"
       },
       {
-        "name": "ohos.permission.PRINT"
-      },
-      {
         "name": "ohos.permission.GET_NETWORK_INFO"
       },
       {

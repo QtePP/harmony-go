@@ -3,7 +3,6 @@ import { BusinessError } from '@kit.BasicServicesKit'
 import { common } from '@kit.AbilityKit'
 import { fileIo as fs } from '@kit.CoreFileKit'
 import { image } from '@kit.ImageKit'
-import { print } from '@kit.BasicServicesKit'
 
 /**
  * Turn a rendered Web page into a shareable file.
@@ -195,35 +194,5 @@ export async function exportPageAsPdf(
     return { ok: false, path: '', message: `导出失败：${(error as Error).message}` }
   } finally {
     pixelMap.release()
-  }
-}
-
-/**
- * Generate the single-page PDF and hand it to the system print dialog.
- *
- * A generated HTML artifact usually ships its own 打印 button wired to
- * `window.print()`, which does nothing inside an embedded Web component: the
- * host has to decide what printing means. Here it means "print the page as
- * the same one-page PDF the export produces", so what comes out of a printer
- * is what the user sees.
- */
-export async function printPageAsPdf(
-  context: common.UIAbilityContext,
-  controller: webview.WebviewController,
-  fileName: string
-): Promise<string> {
-  const outcome = await exportPageAsPdf(context, controller, fileName)
-  if (!outcome.ok) {
-    return outcome.message
-  }
-  try {
-    await print.print([outcome.path], context)
-    return '已打开打印面板'
-  } catch (error) {
-    const code = (error as BusinessError).code
-    if (code === 201) {
-      return '打印服务不可用（设备上没有打印服务）'
-    }
-    return `无法打印：${(error as BusinessError).message}`
   }
 }
