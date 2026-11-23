@@ -1,13 +1,42 @@
 # HTML 组件库（A2UI）
 
-> 这是 `@ohos/dsh-tool-html` 内置组件清单的快照；**权威来源是插件本身**（`html` 工具的 `action: components`）。
-> 页面骨架已内联整套样式与明暗两套配色，模型只需要选组件、填内容：不要自己写 CSS，不要引外链，
-> 不要加打印/分享按钮（预览页已经有「导出」）。图表是纯 CSS，可排序表格用页面内联脚本做渐进增强
-> （脚本不可用时表格照样完整显示）。
+> 这是 `@ohos/dsh-tool-html` 内置组件与令牌清单的快照；**权威来源是插件本身**（`html` 工具的 `action: components`）。
+> 页面骨架已内联整套样式与明暗两套配色，模型只需选组件、填内容。**观感通过 CSS 令牌调整**（`create` 的
+> `tokens`，或 `theme` / `width` / `density` 快捷参数），不要重写组件样式；不要外链任何资源，
+> 不要加打印/分享按钮（预览页已经有「导出」）。
 
 # 组件清单（html 工具内置）
 
 页面骨架已自带整套样式与明暗两套配色：**只复制下面的片段、填内容，不要自己写 CSS，不要引入外部资源。**
+
+## 令牌（要改观感时改这些 CSS 变量，不要重写组件样式）
+
+- `--accent` — 强调色（链接、按钮、图表主色）
+- `--c1 … --c5` — 图表配色序列：--c1 默认等于 accent
+- `--bg / --surface / --surface-2` — 页面底色 / 卡片 / 次级卡片
+- `--text / --muted / --line` — 正文 / 次要文字 / 分隔线
+- `--ok / --warn / --danger` — 语义色
+- `--radius / --radius-sm / --radius-lg` — 圆角（默认 14 / 10 / 20）
+- `--gap / --gap-sm / --gap-lg` — 间距（默认 18 / 10 / 28）
+- `--page-max` — 内容最大宽度（默认 760px；.wrap.narrow / .wrap.wide 也可改）
+- `--fs-h1 / --fs-h2 / --fs-body / --fs-small` — 字号
+- `--line-height` — 行高（默认 1.7）
+- `--font-body` — 正文字体栈
+
+覆盖方式：`create` 时传 `tokens: {"--accent": "#c2410c", "--c2": "#0891b2"}`，
+或直接给 `<html style="--accent:#c2410c">`；组件会自动跟着变。
+
+## 修饰符（组合现有组件，不新增样式）
+
+- `card.flat / card.tinted / card.accent` — 无边框次级底 / 强调色淡底 / 实心强调色卡
+- `stat.hero` — 放大的关键数字（46px、强调色）
+- `steps.compact / table.compact` — 更紧凑的步骤 / 表格行距
+- `tr.hi` — 高亮表格中的某一行
+- `badge.ok / badge.warn` — 状态标签的语义色
+- `grid-2 / grid-3 / grid-4` — 并排 2 / 3 / 4 列（窄屏自动单列）
+- `wrap.narrow / wrap.wide` — 正文 620px / 980px
+- `body.density-compact / body.density-roomy` — 整页更紧凑 / 更松弛
+- `mt-* / mb-* / text-* / row` — 间距、语义色、横向排列等小工具类
 
 ## hero · 开篇
 
@@ -253,6 +282,118 @@
 <div class="chart-donut">
   <div class="donut" style="--p:72%"><div class="donut-hole">72%</div></div>
   <div class="chart-legend">本周训练完成度<b>18 / 25 次</b>还差 7 次，优先补两次力量</div>
+</div>
+```
+
+## section-head · 章节标题
+
+什么时候用：长页面需要分段时，给每一段一个标题 + 一句说明，读者能跳着看。
+
+```html
+<div class="section-head">
+  <h2>这一段讲什么</h2>
+  <p class="text-muted">一句话说明，可省略。</p>
+</div>
+```
+
+## figure · 图
+
+什么时候用：需要配图/示意图时；图片必须内联（data: URI 或行内 SVG），不要外链。frame.ratio 给 16:9 占位。
+
+```html
+<figure class="figure">
+  <div class="frame ratio">
+    <svg viewBox="0 0 320 180" width="100%" height="100%"><rect width="320" height="180" fill="var(--surface-2)"/><text x="160" y="96" text-anchor="middle" fill="var(--muted)" font-size="14">示意图</text></svg>
+  </div>
+  <figcaption class="figure-cap">图注说明</figcaption>
+</figure>
+```
+
+## gallery · 图集
+
+什么时候用：多张图并排（截图墙、风格参考）；窄屏自动换行。
+
+```html
+<div class="gallery">
+  <div class="frame ratio" style="aspect-ratio:1"><svg viewBox="0 0 100 100" width="100%" height="100%"><rect width="100" height="100" fill="var(--surface-2)"/></svg></div>
+  <div class="frame ratio" style="aspect-ratio:1"><svg viewBox="0 0 100 100" width="100%" height="100%"><rect width="100" height="100" fill="var(--surface-2)"/></svg></div>
+</div>
+```
+
+## avatars · 人物/角色行
+
+什么时候用：介绍人、团队、责任分工；首字母头像自动取强调色。
+
+```html
+<div class="avatars">
+  <div class="avatar-row"><div class="avatar">张</div><div class="avatar-body"><div class="avatar-name">张三</div><div class="avatar-meta">负责训练计划</div></div></div>
+  <div class="avatar-row"><div class="avatar">李</div><div class="avatar-body"><div class="avatar-name">李四</div><div class="avatar-meta">负责饮食</div></div></div>
+</div>
+```
+
+## plans · 方案卡
+
+什么时候用：2–3 个套餐/档位对比，含价格与要点；featured 标出推荐项。
+
+```html
+<div class="plans">
+  <div class="plan"><div class="plan-name">基础</div><div class="plan-price">¥0</div><ul><li>要点一</li><li>要点二</li></ul></div>
+  <div class="plan featured"><div class="plan-name">推荐</div><div class="plan-price">¥29</div><ul><li>要点一</li><li>要点二</li></ul></div>
+</div>
+```
+
+## chart-stack · 堆叠柱状
+
+什么时候用：总量由几部分构成（每周训练/恢复占比、预算构成）；每段高度写百分比，段用 c2/c3/c4/c5 换色。
+
+```html
+<div class="stack">
+  <div class="stack-col"><div class="stack-seg" style="height:40%"></div><div class="stack-seg c2" style="height:18%"></div><div class="stack-seg c3" style="height:12%"></div><span class="chart-x">W1</span></div>
+  <div class="stack-col"><div class="stack-seg" style="height:34%"></div><div class="stack-seg c2" style="height:24%"></div><div class="stack-seg c3" style="height:10%"></div><span class="chart-x">W2</span></div>
+  <div class="stack-col"><div class="stack-seg" style="height:30%"></div><div class="stack-seg c2" style="height:20%"></div><div class="stack-seg c3" style="height:14%"></div><span class="chart-x">W3</span></div>
+</div>
+<div class="legend"><span><i></i>力量</span><span><i class="c2"></i>心肺</span><span><i class="c3"></i>恢复</span></div>
+```
+
+## chart-hbars · 横向条形
+
+什么时候用：类别名较长、条数多时比纵向柱状好读（支出分类、动作频次）。宽度写百分比。
+
+```html
+<div class="hbars">
+  <div class="hbar"><span class="hbar-label">深蹲</span><div class="hbar-track"><div class="hbar-fill" style="width:82%"></div></div><span class="hbar-val">82</span></div>
+  <div class="hbar"><span class="hbar-label">卧推</span><div class="hbar-track"><div class="hbar-fill" style="width:64%"></div></div><span class="hbar-val">64</span></div>
+  <div class="hbar"><span class="hbar-label">硬拉</span><div class="hbar-track"><div class="hbar-fill" style="width:47%"></div></div><span class="hbar-val">47</span></div>
+</div>
+```
+
+## chart-line · 折线图
+
+什么时候用：看趋势（体重、完成率、用量）时；用行内 SVG 手写坐标（viewBox 320×180），不依赖脚本，导出不变形。
+
+```html
+<svg class="chart-line" viewBox="0 0 320 180" role="img" aria-label="趋势">
+  <line class="grid-line" x1="24" y1="40" x2="304" y2="40"/>
+  <line class="grid-line" x1="24" y1="90" x2="304" y2="90"/>
+  <line class="axis" x1="24" y1="150" x2="304" y2="150"/>
+  <path class="area" d="M24,120 L88,96 L152,104 L216,72 L280,60 L280,150 L24,150 Z"/>
+  <path class="series" d="M24,120 L88,96 L152,104 L216,72 L280,60"/>
+  <path class="series-2" d="M24,132 L88,120 L152,126 L216,110 L280,92"/>
+  <text class="tick" x="24" y="168">W1</text><text class="tick" x="144" y="168">W3</text><text class="tick" x="264" y="168">W5</text>
+</svg>
+<div class="legend"><span><i></i>完成度</span><span><i class="c2"></i>目标线</span></div>
+```
+
+## chart-heat · 热力格
+
+什么时候用：按天/按周的打卡密度（训练日历、习惯追踪）；l1–l5 是强度档。
+
+```html
+<div class="heat">
+  <div class="heat-cell l3"></div><div class="heat-cell l1"></div><div class="heat-cell l5"></div><div class="heat-cell"></div>
+  <div class="heat-cell l2"></div><div class="heat-cell l4"></div><div class="heat-cell l3"></div><div class="heat-cell l1"></div>
+  <div class="heat-cell"></div><div class="heat-cell l5"></div><div class="heat-cell l2"></div><div class="heat-cell l4"></div>
+  <div class="heat-cell l1"></div><div class="heat-cell l3"></div><div class="heat-cell l5"></div><div class="heat-cell"></div>
 </div>
 ```
 

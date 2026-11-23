@@ -18,6 +18,16 @@
 
 ### 新增
 
+- **`html` 组件库令牌化 + 9 个展示组件（2026-11-23 真机）**。组件不再把颜色/间距/字号/宽度写死：改成
+  CSS 令牌（`--accent`、`--c1…--c5`、`--gap*`、`--radius*`、`--page-max`、`--fs-*` 等）+ 修饰符
+  （`card.flat/tinted/accent`、`stat.hero`、`steps.compact`、`wrap.wide`、`body.density-*`…），
+  `create` 支持 `tokens` 覆盖与 `theme/width/density` 快捷参数，观感随令牌整体变化。新增
+  `chart-stack` / `chart-hbars` / `chart-line`（静态 SVG）/ `chart-heat` / `section-head` / `figure` /
+  `gallery` / `avatars` / `plans`；`check` 增加「正文写死十六进制颜色」告警。单测 33 条并入
+  `bash scripts/test.sh unit`；真机（手机）模型生成 22.6KB 暗色页面，堆叠柱/横向条/折线/热力格/方案卡
+  均按 `--accent` 令牌渲染，0 外链、0 告警。
+
+
 - **`html` 组件库扩到 19 个：图表、可排序表格与检查基线（2026-11-23）**。新增纯 CSS 的 `chart-bars`
   （柱状）与 `chart-donut`（`conic-gradient` 环形）；`table-sortable` 用页面内联脚本做表头排序 +
   `data-page-size` 分页，属于渐进增强（脚本禁用时表格仍完整显示，导出保留当前状态）；`check` 增加

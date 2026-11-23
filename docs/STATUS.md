@@ -7,6 +7,23 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 >
+- **产物栏不能左右滑动 → Row 的 `width('100%')` 把 Scroll 内容量成一屏（2026-11-23 19:00，手机 CMM-AL10）**。
+  现象：产物超过 3 个时第 4、5 个被裁掉，左右滑动没有反应。根因：横向 `Scroll` 里的 `Row` 写了
+  `.width('100%')`，Scroll 按一屏宽度测量内容，卡片溢出但没有可滚动范围。修法：去掉 Row 的
+  100% 宽，让它按内容撑开；真机用 5 个产物左右滑动，能滚到最后一个 `one-hour-fitness-plan.html`。
+- **Office 端侧闭环：纯 JS docx/xlsx 生成 + 读取 + 原生预览（2026-11-23 18:30–18:45，手机 CMM-AL10）**。
+  模型按提示直接调用 `office_write_docx` / `office_write_xlsx`，在工作区 `reports/` 生成
+  `office-test.docx`（3097B）与 `office-test.xlsx`（2348B），只回复两个路径；产物面板「全屏」打开
+  `FileViewer`：docx 标题/正文/表格、xlsx Sheet1（列字母/行号/名称数量、数字右对齐）均正确。
+  把设备生成的文件拉回宿主，插件 `readDocx/readXlsx` 读回内容与写入一致。
+  验证：`dsh-tool-office` 单测 40/40（含 `--jitless`）、LocalUnit 15.2%、`--dump-config` 有
+  `tool-office-ohos`、boot-report `tools(31)`（含 3 个 `office_*`）。
+  踩坑：①xlsx 内联字符串是 `<t>` 不是 `<w:t>`，首轮 LocalUnit 失败；②`Scroll` 的单子节点会垂直居中，
+  docx/表格要 `.align(Alignment.TopStart)` 才贴顶；③ZIP central directory 的 external attrs 为 0 会让
+  `unzip` 解出 000 权限文件，写 ZIP 时必须给 0644；④设备被并行会话占用时 UI 自动化会互相抢焦点，
+  验收要固定一台设备/一个会话。
+  未验/边界：`office_read` 已由单测 + 设备文件回读覆盖，但未单独让模型在真机上调用一次；PPTX/旧格式
+  明确不支持（见 `docs/OFFICE.md`）。
 - **星闪传输卡在 43% → 发送端等 ack、接收端看门狗、写入节流（2026-11-23 16:30，手机 CMM-AL10 ↔ 平板 MLR-AL00）**。
   真机现象：发送端显示「已发送 154 个文件 · 3.2MB / 100%」，接收端停在 **43%** 不动。
   根因：发送端把最后一帧 `writeData` 的成功当成传完，`ack` 等 10 秒没到就把错误吞掉并断开链路；
@@ -233,6 +250,25 @@
   PDF **MediaBox 992.25×12000pt / 968KB**，两份文件都从设备取回校验（PDF 用 `qlmanage` 渲染缩略图
   确认整页内容在），每次导出后系统分享面板正常弹出（「分享 1 项」）。
 
+- **组件库改成「令牌驱动 + 修饰符」，并补 9 个展示组件（2026-11-23 19:10，手机 CMM-AL10）**。
+  背景：原组件库把颜色/间距/字号/宽度写死在组件里，虽然能拼页面，但换观感就要重写 CSS —— 等于用框架
+  限制了可视化表达。改法：
+  ① **令牌化**：`--accent`、`--c1…--c5`（图表色序）、`--bg/--surface/--surface-2`、`--text/--muted/--line`、
+  `--ok/--warn/--danger`、`--radius*`、`--gap*`、`--page-max`、`--fs-*`、`--line-height` 全部可覆盖；
+  `create` 新增 `tokens`（任意变量，如 `{"--accent":"#c2410c"}`）+ `theme=auto|light|dark`、
+  `width=narrow|wide`、`density=compact|roomy`；显式 `data-theme` 优先于系统偏好（暗色块加
+  `html:not([data-theme="light"])` 兜底）。
+  ② **修饰符**：`card.flat/tinted/accent`、`stat.hero`、`steps.compact`、`table.compact`、`tr.hi`、
+  `badge.ok/warn`、`grid-2/3/4`、`wrap.narrow/wide`、`body.density-*`，以及间距/语义色/`row` 工具类 ——
+  组合现有组件即可变体，不新增硬编码样式。
+  ③ **展示组件 +9**：`chart-stack`（堆叠柱）、`chart-hbars`（横向条形）、`chart-line`（**静态 SVG**，
+  坐标 viewBox 320×180）、`chart-heat`（热力格 l1–l5）、`section-head`、`figure`、`gallery`、`avatars`、
+  `plans`；图表全部纯 CSS/静态 SVG，导出长图/PDF 不走样。
+  ④ `check` 新增「正文写死的十六进制颜色」告警（超过 3 个就提示改用令牌），把「别写死」变成可检查的规则。
+  验证：单测 **33 条**全绿（令牌/主题/宽窄/密度生效、显式主题优先、坏参数被拒、写死颜色被告警、新组件类
+  都有样式）；Node 冒烟（dark+wide+compact+tokens 生成 21.4KB 页面，check 通过）；真机让模型生成
+  `v2-visual.html` —— **22.6KB、0 外链、`--accent:#c2410c` 生效**，暗色下堆叠柱/横向条/折线（含虚线
+  对照线与面积填充）/热力格/方案卡/人物行全部按令牌渲染；基线文件记录 8 个组件、0 warn 0 error。
 - **`html` 组件库补三类能力：图表、可排序表格、检查基线（2026-11-23 18:35，Node 冒烟 + 真机装包）**。
   ① **图表（纯 CSS，零脚本）**：`chart-bars`（柱状，柱高写百分比）与 `chart-donut`（`conic-gradient`
   环形 + 中心 `--p` 百分比）；导出的长图/PDF 与预览完全一致，因为不依赖 JS。
