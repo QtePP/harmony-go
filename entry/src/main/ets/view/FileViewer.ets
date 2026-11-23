@@ -5,7 +5,9 @@ import { fileIo as fs } from '@kit.CoreFileKit'
 import { MdText } from './Markdown'
 import { saveToGallery } from '../common/Gallery'
 import { shareFile } from '../common/FileShare'
-import { enableWholePageDrawing, exportPageAsPdf, exportPageAsPng, ExportOutcome } from '../common/PageExport'
+import {
+  enableWholePageDrawing, exportPageAsPdf, exportPageAsPng, ExportOutcome, printPageAsPdf
+} from '../common/PageExport'
 
 /** How a referenced file renders. */
 enum PreviewKind {
@@ -223,6 +225,32 @@ export struct FileViewer {
     .padding({ top: 4, bottom: 4 })
   }
 
+  /**
+   * Serve the page's own 打印 button.
+   *
+   * Generated pages wire it to `window.print()`, which an embedded Web
+   * component ignores: the host owns printing. The page is printed as the
+   * same one-page PDF the export produces, so paper matches the screen.
+   */
+  private async printHostPage(): Promise<void> {
+    const context = getContext(this) as common.UIAbilityContext
+    const message = await printPageAsPdf(context, this.controller, this.fileName)
+    this.getUIContext().getPromptAction().showToast({ message: message, duration: 2400 })
+  }
+
+  /** Replace window.print once the page script is in place. */
+  private hookPagePrint(): void {
+    try {
+      this.controller.runJavaScript(
+        'window.print = function () { try { window.dshHost.printPage(); console.log("DSH-PRINT bridge-ok"); } ' +
+        'catch (error) { console.log("DSH-PRINT bridge-missing " + error); } };' +
+        'console.log("DSH-PRINT hooked host=" + (typeof window.dshHost));'
+      )
+    } catch (error) {
+      // A page without a print button simply never calls it.
+    }
+  }
+
   build() {
     Column() {
       Row() {
@@ -332,6 +360,27 @@ export struct FileViewer {
         Web({ src: this.fileUrl(), controller: this.controller })
           .fileAccess(true)
           .domStorageAccess(true)
+          // The bridge lets the page's own buttons reach the host; only
+          // printing is exposed, and only as "print this page".
+          .javaScriptProxy({
+            object: {
+              printPage: (): void => {
+                void this.printHostPage()
+              }
+            },
+            name: 'dshHost',
+            methodList: ['printPage'],
+            controller: this.controller
+          })
+          .onPageEnd(() => {
+            this.hookPagePrint()
+          })
+          .onConsole((event) => {
+            // Visible in `devecocli log`: the page's own diagnostics, plus the
+            // markers that say whether the print bridge exists.
+            console.info(`DSH-WEB ${event.message.getMessage()}`)
+            return false
+          })
           .layoutWeight(1)
           .width('100%')
       } else if (this.kind === PreviewKind.IMAGE) {

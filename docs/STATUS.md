@@ -208,6 +208,17 @@
   **「。今天天气不错。」**，日志同时出现 `Infer runModel [Decjoint]` 与 `VadInferEvad`（VAD 在跑）。
   这台设备上之前那条「离线语音引擎验成」只证明了**引擎能启动**，不证明识别出字，本条更正。
 
+- **HTML 里自带的「打印」按钮点了没反应 → 桥到系统打印面板（2026-11-23 17:53，手机 CMM-AL10）**。
+  生成的网页普遍带一个 `onclick="window.print()"` 的打印按钮，在嵌入式 Web 组件里**没人接**，
+  点了自然毫无反应。修法两层：
+  ① `javaScriptProxy` 暴露 `window.dshHost.printPage()`，`onPageEnd` 里把 `window.print` 重写成它
+     （真机日志：`DSH-PRINT hooked host=object` → 点击后 `DSH-PRINT bridge-ok`）；
+  ② 宿主侧把整页导出成单页 PDF，再 `print.print([pdf])` 调系统打印面板。
+  中间踩了一个坑：`print.print` 需要 **`ohos.permission.PRINT`**，没声明时 PrintKit 直接
+  `CheckPermission ... tokenId permission is -1` → `E_PRINT_NO_PERMISSION (201)`，表现是"点了还是没反应"。
+  `module.json5` 声明该权限（install 期授予）后，真机点击打印按钮即弹出系统「打印」页
+  （打印机 / 开始打印 / 另存为 pdf），实测还能走通「另存为 pdf」的文件选择器。
+
 - **HTML 产物导出长图 PNG / 单页 PDF 并分享（2026-11-23 17:45，手机 CMM-AL10）**。
   需求：生成的可视化网页（长页面）想直接发出去，截图只有一屏。
   实现：`FileViewer` 的 Web 预览新增「导出」菜单（长图 PNG / PDF），走

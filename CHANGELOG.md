@@ -239,6 +239,13 @@
 
 ### 修复
 
+- **HTML 自带的「打印」按钮点了没反应（2026-11-23 真机）**。两处原因：嵌入式 Web 组件不会处理页面的
+  `window.print()`；我们的 `print.print` 也因未声明 **`ohos.permission.PRINT`** 被 PrintKit 以
+  `E_PRINT_NO_PERMISSION(201)` 拒绝。现在用 `javaScriptProxy` 把 `window.print` 桥到宿主、整页导出
+  单页 PDF 后调系统打印面板，并在 `module.json5` 声明该权限；真机点击打印按钮可正常弹出「打印」页
+  （打印机 / 开始打印 / 另存为 pdf）。
+
+
 - **语音输入只有「启动成功」没有字：补上麦克风采集（2026-11-23 真机）**。CoreSpeechKit 的识别引擎不自己录音，
   `startListening` 只准备会话，音频要用 `AudioCapturer` 采 16 kHz 单声道 PCM 后按 **640/1280 字节**
   `writeAudio` 喂进去；之前少了这一步，引擎启动成功却永远没有 `onResult`。现在补上采集与切片、结束前补零发送，
