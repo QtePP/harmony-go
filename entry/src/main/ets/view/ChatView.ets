@@ -2169,6 +2169,18 @@ export struct ChatView {
     }
     return label.substring(0, 4)
   }
+
+  /**
+   * Width of the trailing strip, derived from the same conditions that decide
+   * which buttons the strip renders. Deriving it is the whole point: the strip
+   * changed shape twice (model chip, effort chip) while the reserve stayed a
+   * constant, and every drift ends with the draft running under the buttons.
+   */
+  private composerInset(): number {
+    const mic = this.speechReady && this.speechAsrUsable ? 34 + 6 : 0
+    return 6 + mic + 34 + 6
+  }
+
   onStop: () => void = () => {}
   /** Drop one queued turn before it is sent (index into `queued`). */
   onDequeue: (index: number) => void = () => {}
@@ -3023,6 +3035,55 @@ export struct ChatView {
           })
 
           Row({ space: 6 }) {
+            // Model and thinking depth are session settings, not per-message
+            // actions: they ride with the other chrome in the header instead
+            // of taking room away from the draft. In the composer they were
+            // the widest part of the strip, and the strip is exactly what
+            // covered long drafts.
+            if (this.showModelPicker) {
+              // A glyph instead of the model name: the full id
+              // (DeepSeek-V4.1-Flash) never fits and truncates to an
+              // unreadable stub. The name surfaces as the accessibility label
+              // and again in the picker itself.
+              Button({ type: ButtonType.Circle }) {
+                Image($r('app.media.icon_model'))
+                  .width(16)
+                  .height(16)
+                  .fillColor(this.modelPressed ? this.accent : $r('app.color.text_secondary'))
+              }
+              .width(34)
+              .height(34)
+              .backgroundColor($r('app.color.surface_muted'))
+              .accessibilityText(this.modelLabel.length > 0 ? `模型：${this.modelLabel}` : '切换模型')
+              .scale({
+                x: this.modelPressed ? 0.92 : 1,
+                y: this.modelPressed ? 0.92 : 1
+              })
+              .animation({ duration: 120, curve: Curve.EaseOut })
+              .onTouch((event: TouchEvent) => {
+                if (event.type === TouchType.Down) {
+                  this.modelPressed = true
+                } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                  this.modelPressed = false
+                }
+              })
+              .onClick(() => this.onPickModel())
+            }
+
+            // Reasoning depth, only when the server offered it for the
+            // selected model: an unsupported model has no such option, and a
+            // dead control is worse than no control.
+            if (this.showEffortPicker) {
+              Button(this.effortShortLabel())
+                .fontSize(11)
+                .height(28)
+                .padding({ left: 10, right: 10 })
+                .backgroundColor($r('app.color.surface_muted'))
+                .fontColor($r('app.color.text_secondary'))
+                .accessibilityText(this.effortLabel.length > 0 ? `思考深度：${this.effortLabel}` : '思考深度')
+                .onClick(() => this.onPickEffort())
+            }
+
             if (this.showSessionsEntry) {
               this.topIcon($r('app.media.icon_sessions'), (): void => {
                 this.onOpenSessions()
@@ -3231,10 +3292,12 @@ export struct ChatView {
             TextArea({ text: this.draft })
               .width('100%')
               .fontSize(15)
-              // Right inset covers the inner strip: model glyph (28) + gap
-              // (6) + image button (34) + trailing margin. It used to reserve
-              // 118vp for the model's text label, which no longer exists.
-              .padding({ left: 12, right: this.showModelPicker ? 86 : 48, top: 8, bottom: 8 })
+              // The right inset comes from composerInset(), which is derived
+              // from the same conditions that decide what the strip below
+              // renders. The old fixed 48/86 number was tuned for a strip that
+              // has since grown, and a stale constant is what let long drafts
+              // run underneath the buttons.
+              .padding({ left: 12, right: this.composerInset(), top: 8, bottom: 8 })
               .constraintSize({ minHeight: 44, maxHeight: 132 })
               .backgroundColor($r('app.color.surface_muted'))
               .borderRadius(14)
@@ -3254,50 +3317,6 @@ export struct ChatView {
               })
 
             Row({ space: 6 }) {
-              if (this.showModelPicker) {
-                // A glyph instead of the model name: the full id
-                // (DeepSeek-V4.1-Flash) never fit the chip and was truncated
-                // to an unreadable stub. The name still surfaces as the
-                // accessibility label and again in the picker itself.
-                Button({ type: ButtonType.Circle }) {
-                  Image($r('app.media.icon_model'))
-                    .width(16)
-                    .height(16)
-                    .fillColor(this.modelPressed ? this.accent : $r('app.color.text_secondary'))
-                }
-                .width(28)
-                .height(28)
-                .backgroundColor($r('app.color.surface'))
-                .accessibilityText(this.modelLabel.length > 0 ? `模型：${this.modelLabel}` : '切换模型')
-                .scale({
-                  x: this.modelPressed ? 0.92 : 1,
-                  y: this.modelPressed ? 0.92 : 1
-                })
-                .animation({ duration: 120, curve: Curve.EaseOut })
-                .onTouch((event: TouchEvent) => {
-                  if (event.type === TouchType.Down) {
-                    this.modelPressed = true
-                  } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-                    this.modelPressed = false
-                  }
-                })
-                .onClick(() => this.onPickModel())
-              }
-
-              // Reasoning effort, only when the server offered it for the
-              // selected model: an unsupported model has no such option, and a
-              // dead control is worse than no control.
-              if (this.showEffortPicker) {
-                Button(this.effortShortLabel())
-                  .fontSize(11)
-                  .height(28)
-                  .padding({ left: 10, right: 10 })
-                  .backgroundColor($r('app.color.surface'))
-                  .fontColor($r('app.color.text_secondary'))
-                  .accessibilityText(this.effortLabel.length > 0 ? `思考深度：${this.effortLabel}` : '思考深度')
-                  .onClick(() => this.onPickEffort())
-              }
-
               // Dictation sits before the image picker: speaking is the faster
               // way in, and it is the control people reach for most.
               if (this.speechReady && this.speechAsrUsable) {
