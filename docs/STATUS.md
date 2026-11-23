@@ -233,6 +233,23 @@
   PDF **MediaBox 992.25×12000pt / 968KB**，两份文件都从设备取回校验（PDF 用 `qlmanage` 渲染缩略图
   确认整页内容在），每次导出后系统分享面板正常弹出（「分享 1 项」）。
 
+- **新增 `html` 工具：用组件库写页面，而不是每次从零推理（2026-11-23 18:25，手机 CMM-AL10）**。
+  背景：页面是模型用通用 `write` 工具从零拼出来的——排版/配色/移动端宽度每次重新推理，两页像两个产品，
+  还常带 CDN 外链（设备上离线打不开）和 `window.print()` 按钮（嵌入式 Web 点不动）。
+  做法：新增 `@ohos/dsh-tool-html`，注册成工具 `html`，四个动作：`components` 返回 **16 个组件**的清单与
+  可复制片段（hero / card / grid / stats / steps / checklist / table / callout / timeline / compare / bars /
+  kv / fold / quote / code / divider）、`create` 写单文件骨架（样式内联、`prefers-color-scheme` 明暗两套、
+  移动端 viewport、零外链、无页面级按钮）、`fill` 往内容插槽放片段、`check` 报外链/缺 viewport/体积/
+  打印按钮/组件库外 class。接线到 bundle 依赖 + `cordis.patch.yml` insert 行，并进 `scripts/test.sh unit`
+  （新增 19 条单测，全绿）。
+  **两个真机坑**：① `defineTool` 的 `render` 必须在 `output: { schema, render }` 下，放顶层会让插件挂载失败
+  （`node.log`: `TypeError: Cannot read properties of undefined (reading 'render')`），表现为工具不出现、
+  `tools(27)` 不变；② `append` 原本插到页面末尾，落在 `<footer>` 之后、`<main>` 之外（真机产物可见），
+  改成模板里有 `<!-- dsh:content -->` / `<!-- dsh:content:end -->` 双标记，replace 与 append 都留在 `<main>` 内。
+  真机验收：两台设备 boot-report 都出现 `html`（`tools(31)` 列表里有 `html`）；让手机上的模型按提示用工具
+  生成 `demo-plan.html`：**9.4KB、stats(4 处 stat-value) + steps(5 处 step-num)、保留插槽标记、
+  0 个外链**，预览页渲染正常（组件样式生效）。`docs/HTML-COMPONENTS.md` 是组件清单快照。
+
 > 载荷里的 `payload/docs/` 是构建期快照（`assemble-payload.mjs` 的 `stageDocs()` 拷 `docs/*.md`），
 > 权威副本始终是本文件。
 

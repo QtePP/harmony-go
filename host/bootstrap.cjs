@@ -835,6 +835,7 @@ const PLATFORM_NOTES = [
   '- **仓库**：`git` 工具把仓库克隆到工作区的 `repos/<owner>-<name>/`；引用仓库内的文件用仓库相对路径即可（例如 `docs/STATUS.md`）。',
   '- **push 的 token**：由 `git` 工具自己从 `dsh-home/.git-token` 读取，不需要去找，也没有 shell 可以查；没有 token 时它返回 `GIT_NO_TOKEN`。',
   '- **生成的网页不要自带「打印」按钮**：壳的预览页已经有「导出」（整页长图 PNG / 单页 PDF）和分享；页面里再放一个 `window.print()` 按钮在嵌入式 Web 里点不动，只会让人以为坏了。',
+  '- **写网页用 `html` 工具，不要从零拼 CSS**：先 `action: components` 拿组件清单（hero / card / grid / stats / steps / checklist / table / callout / timeline / compare / bars / kv / fold …），`action: create` 起骨架（样式已内联、明暗两套色、移动端优先、无任何外链），再用 `action: fill` 逐个放组件，最后 `action: check` 看有没有外链/缺 viewport/体积超限。',
   ''
 ].join('\n')
 

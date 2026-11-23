@@ -18,6 +18,14 @@
 
 ### 新增
 
+- **`html` 工具：A2UI 组件库写页面（2026-11-23 真机）**。此前网页由模型用 `write` 从零拼，每次重复推理
+  排版/配色/移动端，产品上表现为风格漂移、偶发 CDN 外链（离线打不开）与 `window.print()` 按钮（点不动）。
+  新工具 `html` 提供四个动作：`components`（16 个组件 + 可复制片段）、`create`（单文件骨架：内联样式、
+  明暗两套色、移动端优先、零外链）、`fill`（放进 `<main>` 内容插槽）、`check`（外链/缺 viewport/体积/
+  打印按钮/未知 class）。真机验收：模型自己按工具提示生成 9.4KB 页面（stats + steps，0 外链），
+  预览正常；插件单测 19 条并入 `bash scripts/test.sh unit`；组件清单见 `docs/HTML-COMPONENTS.md`。
+
+
 - **HTML 产物导出为整页长图 PNG / 单页 PDF 并分享（2026-11-23 真机）**。Web 预览新增「导出」菜单：
   `enableWholeWebPageDrawing()` + `webPageSnapshot()` 拿整页位图，PNG 直接编码；PDF 不引库，把整页
   JPEG 以 `DCTDecode` 嵌进单页 PDF（页面按原比例，长文保持一页长文档），生成后直接拉起系统分享面板。
