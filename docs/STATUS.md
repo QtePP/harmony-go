@@ -12,6 +12,20 @@
 
 ---
 
+- **设置里的模型名修正之后，把老设备里存的假 id 迁移掉（2026-11-23 10:23，手机 CMM-AL10）**。
+  同一天的 `6da2e63` 把「模型」从写死的假 id 换成按 Key 拉 `/models` 的列表，但它**没处理已经存进
+  preferences 的旧值**：那个月点过「保存」的设备，`dsh_settings` 里仍然是 `deepseek-v4-flash`，
+  设置页照旧显示它、SDK 的 `initialize` 照旧送它。本次补迁移：`ModelCatalog.normalizeModelId()`
+  把 provider 目录里不存在的 id 映射成真实的（`deepseek-v4-flash` → `deepseek-flash`），
+  `AppConfig.load()` 规范化后**回写一次**、`save()` 同样规范化。单测 +2（旧 id 带首尾空格也改写；
+  真实/未知/空 id 原样返回）。
+  **真机取证用两段式**（列表已经选不出假 id，只能自己造出老状态）：先用一个临时构建把
+  `deepseek-v4-flash` 写进 preferences（代码里明确标 `TEMP-SEED`，验完删掉、不进 commit），
+  再装正式构建——启动后 `dsh_settings` 从 `deepseek-v4-flash` 变成 `deepseek-flash`。
+  同一轮还验了列表的写入路径：选中 `deepseek-v4-pro` → 保存 → preferences 变 `deepseek-v4-pro`；
+  再选回 flash → 保存 → `deepseek-flash`。设置页显示 `DeepSeek-V4.1-Flash` / `DeepSeek-V4-Pro`
+  两个真实条目（名称来自 `/models`）与「当前」标记。
+
 - **品牌标记换成平行四边形横杠，SVG 与所有位图图标的几何原本是两套（2026-11-23，手机 CMM-AL10）**。
   用户要求「闪电上面那一横的左右两边改成斜向下的平行线，那一横变成平行四边形」。
   改动：`bolt.svg` 与 `logo.svg` 里的 `<rect x=3.2 y=3.2 w=17.6 h=2.6 rx=1.3>`（圆头胶囊）换成
