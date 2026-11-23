@@ -126,6 +126,11 @@ fi
 
 # 5. 构建
 say "构建 HAP…（含 ~225MB 载荷，首次较慢）"
+# Pyodide assets live in gitignored rawfile; stage them from the vendored
+# tarball before every build so a fresh checkout still gets the Python tool.
+# Missing assets must not block the rest of the app, hence the warning.
+node scripts/stage-pyodide.mjs || warn "Pyodide staging failed; python_run will be unavailable"
+
 "$DEVECO_CLI" build
 
 # 6. 安装并启动

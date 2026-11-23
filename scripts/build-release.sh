@@ -124,6 +124,7 @@ say "compatibleVersion: API $COMPAT"
 
 # —— 构建（未签名）：仓库口径的 build-profile.json5 原样使用，无注入无还原 ——
 say "构建未签名 release 包（HAP + App Pack）…（含 ~225MB 载荷，较慢）"
+node scripts/stage-pyodide.mjs || warn "Pyodide staging failed; python_run will be unavailable"
 "$DEVECO_CLI" build --build-mode release --assemble-type assembleApp
 
 UNSIGNED="entry/build/default/outputs/default/entry-default-unsigned.hap"

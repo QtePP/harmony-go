@@ -32,7 +32,8 @@ export class PluginCatalog {
     { id: 'tool-skill', label: '技能加载', description: '加载技能目录的完整指令' },
     { id: 'plan-mode', label: '计划模式', description: '先规划、确认后再执行' },
     { id: 'session-title-llm', label: '智能会话标题', description: '由模型生成会话标题' },
-    { id: 'tool-office-ohos', label: 'Office 文档', description: '生成与读取 Word (.docx) / Excel (.xlsx)' }
+    { id: 'tool-office-ohos', label: 'Office 文档', description: '生成与读取 Word (.docx) / Excel (.xlsx)' },
+    { id: 'tool-python-ohos', label: 'Python 运行时（实验）', description: '默认关闭；开启后重启生效。Pyodide/CPython 3.13 + pandas，首次加载几秒' }
   ]
 
   /**
@@ -49,7 +50,7 @@ export class PluginCatalog {
     { id: 'office-convert', label: 'Office 转换（PDF / 图片）', description: '依赖 LibreOffice 原生引擎或 WASM，鸿蒙无法加载' }
   ]
 
-  static rows(disabled: Set<string>): PluginRow[] {
+  static rows(disabled: Set<string>, pythonEnabled: boolean = false): PluginRow[] {
     const out: PluginRow[] = []
     for (const entry of PluginCatalog.TOGGLABLE) {
       const row: PluginRow = {
@@ -57,7 +58,7 @@ export class PluginCatalog {
         label: entry.label,
         description: entry.description,
         locked: false,
-        enabled: !disabled.has(entry.id)
+        enabled: entry.id === 'tool-python-ohos' ? pythonEnabled : !disabled.has(entry.id)
       }
       out.push(row)
     }

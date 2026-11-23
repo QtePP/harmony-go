@@ -2091,6 +2091,18 @@ export struct MessageItem {
             })
         }
 
+        if (this.message.role === Role.ASSISTANT && this.message.note === '本机规则') {
+          Row({ space: 4 }) {
+            Text('本机规则')
+              .fontSize(10)
+              .fontColor($r('app.color.text_tertiary'))
+            Text('· 未调用云端模型')
+              .fontSize(10)
+              .fontColor($r('app.color.text_tertiary'))
+          }
+          .padding({ left: 2, top: 1 })
+        }
+
         if (hasSecret(this.message.text)) {
           Row({ space: 6 }) {
             SymbolGlyph($r('sys.symbol.eye_slash'))

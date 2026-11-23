@@ -8,6 +8,8 @@ import { BusinessError } from '@kit.BasicServicesKit'
 import { BootPhase, NodeHost } from '../host/NodeHost'
 import { AppConfig } from '../common/AppConfig'
 import { ProxyProbe } from '../common/ProxyProbe'
+import { LocalGateContext, matchLocalIntent } from '../common/LocalGate'
+import { LocalGateCache } from '../common/LocalGateCache'
 import { PluginConfig } from '../common/PluginConfig'
 import { PluginCatalog, PluginRow } from '../model/PluginCatalog'
 import { ChatMessage, ContentHit, Role, SessionStore, SessionSummary, ToolTrace, newSessionId, titleOf } from '../model/ChatModel'
@@ -34,6 +36,7 @@ import { ChatView, FileRef } from '../view/ChatView'
 import { FileViewer } from '../view/FileViewer'
 import { FilesPanel } from '../view/FilesPanel'
 import { SessionRail } from '../view/SessionRail'
+import { PythonHost } from '../view/PythonHost'
 import { SettingsSheet } from '../view/SettingsSheet'
 import { ContextPanel } from '../view/ContextPanel'
 import { ContextRecord, parseLedger, recordsFor } from '../model/ContextLedger'
@@ -338,7 +341,8 @@ struct Index {
     // rewrites user.patch.yml and the runtime reads that file at boot.
     PluginConfig.localModel = await LocalModelStore.load(context)
     await PluginConfig.load(context)
-    this.pluginRows = PluginCatalog.rows(PluginConfig.disabled)
+    await LocalGateCache.load(context)
+    this.pluginRows = PluginCatalog.rows(PluginConfig.disabled, PluginConfig.pythonEnabled)
     await this.projectStore.init(context)
     this.projects = await this.projectStore.list()
     this.snapshots.init(context.filesDir)
@@ -1135,6 +1139,27 @@ struct Index {
 
   /** The actual send, once the latch has confirmed this is the only one. */
   private async dispatchSend(text: string, attachPaths: string[]): Promise<void> {
+    // Narrow-intent gate: a greeting or a self-introduction is answered by
+    // local rules, before the session is opened and before any model request.
+    // Attachments always go to the real agent; an image is not a greeting.
+    if (attachPaths.length === 0) {
+      const local = matchLocalIntent(text, new LocalGateContext(new Date(), AppConfig.model))
+      if (local !== null) {
+        if (this.messages.length === 0 && (this.title.length === 0 || this.title === '新会话')) {
+          this.title = titleOf(text)
+        }
+        if (this.context !== null) {
+          LocalGateCache.record(this.context, text, true, local.intent)
+        }
+        this.append(new ChatMessage(newSessionId(), Role.USER, text, ''))
+        this.append(new ChatMessage(newSessionId(), Role.ASSISTANT, local.reply, '本机规则'))
+        void this.persist()
+        return
+      }
+    }
+    if (this.context !== null && attachPaths.length === 0) {
+      LocalGateCache.record(this.context, text, false)
+    }
     if (this.host.isAcp()) {
       await this.sendAcp(text, attachPaths)
       return
@@ -2526,7 +2551,7 @@ struct Index {
       return
     }
     await PluginConfig.setDisabled(this.context, id, !enabled)
-    this.pluginRows = PluginCatalog.rows(PluginConfig.disabled)
+    this.pluginRows = PluginCatalog.rows(PluginConfig.disabled, PluginConfig.pythonEnabled)
   }
 
   private async saveSettings(key: string, model: string, gitToken: string): Promise<void> {
@@ -2577,6 +2602,8 @@ struct Index {
     }
     lines.push('--- boot report ---')
     lines.push(report)
+    lines.push('--- local gate ---')
+    lines.push(LocalGateCache.summary())
     lines.push('--- bridge ---')
     lines.push(this.host.bridgeStatus(this.context))
     lines.push('--- node log ---')
@@ -3306,6 +3333,12 @@ struct Index {
         .onClick(() => {
           this.showEffortSheet = false
         })
+      }
+      // Hidden 1×1 WebView for the on-device Python runtime. The page stays
+      // mounted after boot so the file bridge is always answerable; Pyodide
+      // itself loads on the first python_run.
+      if (this.phase === BootPhase.READY && PluginConfig.pythonEnabled) {
+        PythonHost()
       }
     }
     .width('100%')

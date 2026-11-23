@@ -40,3 +40,6 @@ build-profile.signing.json5
 # Raw device captures and composed store shots (rebuild with scripts/make-store-shots.py)
 /.build/shots
 /.build/store-shots
+
+# Pyodide runtime assets are staged from host/pyodide/pyodide-0.29.0.tgz
+entry/src/main/resources/rawfile/pyodide/

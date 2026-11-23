@@ -118,6 +118,8 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 | **会话管理** | 标题搜索、置顶、归档（可切回）、多选批量归档/删除、未读圆点 |
 | **导出对话** | `/导出对话` 把转录写成 Markdown 存进 `workspace/exports/` |
 | **产物面板** | 对话中生成的文件自动归档，支持内嵌预览与全屏查看 |
+| **本机快捷回复** | 问候 / 自我介绍 / 感谢 / 告别 / 时间日期 / 四则运算 / 能力帮助由本机精确规则直接回复，不调用云端模型，不产生 token；任务型消息不拦截；诊断页记录高频未命中，供人工提升为规则 |
+| **Python（实验）** | 内嵌 Pyodide（CPython 3.13）+ numpy/pandas，`python_run` 可跑 pandas groupby、经 `files` 读工作区 CSV；`pybot_reply` 跑内置 pybot；默认关闭、设置里开启；含 pybot（Hugging Face / Apache-2.0）压测样本；首次加载约 25s，后台会暂停，暂无输出文件桥；spike 阶段，详见 `docs/PYTHON.md` |
 | **Office 文档** | 让模型生成/读取 Word（`.docx`）与 Excel（`.xlsx`），App 内原生只读预览（标题/列表/表格/工作表）；旧格式与 PPTX 会引导分享到系统 Office/WPS |
 | **图片** | 相册选择与系统分享输入；全屏查看后可保存到相册 |
 | **回合回撤** | 长按消息可回撤到该轮之前，**并还原该轮写入的文件** |

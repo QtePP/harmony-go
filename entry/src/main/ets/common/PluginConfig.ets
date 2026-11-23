@@ -18,7 +18,10 @@ import { fileIo as fs } from '@kit.CoreFileKit'
 export class PluginConfig {
   private static readonly STORE = 'dsh_plugins'
   private static readonly KEY = 'disabled_ids'
+  private static readonly PYTHON_KEY = 'python_enabled'
   private static store: preferences.Preferences | null = null
+  /** Opt-in experimental Python; default off, unlike the other toggles. */
+  static pythonEnabled: boolean = false
 
   /** Entry ids the user switched off; empty means "platform defaults". */
   static disabled: Set<string> = new Set<string>()
@@ -37,10 +40,15 @@ export class PluginConfig {
       }
     }
     PluginConfig.disabled = ids
+    PluginConfig.pythonEnabled = (await PluginConfig.store.get(PluginConfig.PYTHON_KEY, false) as boolean) === true
     PluginConfig.applyPatch(context)
   }
 
   static async setDisabled(context: common.UIAbilityContext, id: string, disabled: boolean): Promise<void> {
+    if (id === 'tool-python-ohos') {
+      await PluginConfig.setPythonEnabled(context, !disabled)
+      return
+    }
     if (disabled) {
       PluginConfig.disabled.add(id)
     } else {
@@ -50,6 +58,16 @@ export class PluginConfig {
       PluginConfig.store = await preferences.getPreferences(context, PluginConfig.STORE)
     }
     await PluginConfig.store.put(PluginConfig.KEY, PluginConfig.joinIds())
+    await PluginConfig.store.flush()
+    PluginConfig.applyPatch(context)
+  }
+
+  static async setPythonEnabled(context: common.UIAbilityContext, enabled: boolean): Promise<void> {
+    PluginConfig.pythonEnabled = enabled
+    if (PluginConfig.store === null) {
+      PluginConfig.store = await preferences.getPreferences(context, PluginConfig.STORE)
+    }
+    await PluginConfig.store.put(PluginConfig.PYTHON_KEY, enabled)
     await PluginConfig.store.flush()
     PluginConfig.applyPatch(context)
   }
@@ -72,7 +90,7 @@ export class PluginConfig {
         ids.push(id)
       })
       const model = PluginConfig.localModel
-      if (ids.length === 0 && model === null) {
+      if (ids.length === 0 && model === null && !PluginConfig.pythonEnabled) {
         if (fs.accessSync(file)) {
           fs.unlinkSync(file)
         }
@@ -85,6 +103,14 @@ export class PluginConfig {
       for (const id of ids) {
         lines.push(`- id: ${id}`)
         lines.push('  disabled: true')
+        lines.push('')
+      }
+      if (PluginConfig.pythonEnabled) {
+        // The platform patch deliberately does not mount the experimental
+        // Python row; enabling it appends the insert to the user patch.
+        lines.push('- insert:')
+        lines.push('    - id: tool-python-ohos')
+        lines.push('      name: "@ohos/dsh-tool-python"')
         lines.push('')
       }
       if (model !== null) {

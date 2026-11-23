@@ -54,6 +54,18 @@ node scripts/assemble-payload.mjs
 临时换版本用 `--dsh-version <ver>`——但换版本要连带跑完三段验证与口径更新；
 换一个全新的 staging 目录用 `--staging .build/payload-b`（避免删大目录触发安全策略）。
 
+## 2.1 端侧 Python 资产（实验）
+
+```bash
+node scripts/stage-pyodide.mjs
+```
+
+把 `host/pyodide/pyodide-0.29.0.tgz`（5.3MB，vendored）展开成
+`entry/src/main/resources/rawfile/pyodide/`（gitignored，core 11.7MiB），并拷入
+`host/pyodide/packages/*.whl`（numpy/pandas 依赖闭包，约 9MB）与
+`host/pybot/pybot.zip`（12MB，Hugging Face Apache-2.0 压测样本）。`deploy.sh` 与
+`build-release.sh` 会在构建前自动调用；`devecocli build` 前手工跑一次即可。详见 `docs/PYTHON.md`。
+
 **为什么必须 `--ignore-scripts`**：`koffi` 是 dsh 的普通依赖，安装时会尝试用 CMake 编译原生
 FFI 二进制，没有工具链就整包安装失败。它的加载是懒的且只服务 Windows API
 （`advapi32`/`kernel32`），在鸿蒙上不会被触发，所以跳过它的构建脚本是安全的。

@@ -7,6 +7,89 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 >
+- **本体跨设备同步：星闪把 1.3KB bundle 从手机送到平板，导入后新会话记得（2026-11-24 03:33–03:59，手机 CMM-AL10 ↔ 平板 MLR-AL00）**。
+  结论先行：**同步的不是 SQLite 文件，是可合并的 bundle**。手机面板「导出到工作区」写
+  `workspace/ontology/ontology-bundle-<时间戳>.json`（2 条事实 1.3KB）→ 项目同步只勾
+  `ontology` 目录、传输选星闪、搜到「niika的MatePad Mini 悦读版」、配对码 235902 →
+  平板接收 **100% / 已接收 1 个文件 · 1.3KB** → 平板面板「导入最新同步包」→
+  **2 条事实 · 1 个实体 · 2 条硬约束**；新会话问「我叫什么/对什么过敏」零工具答
+  「林舟 / 花生」。两端随后把测试事实删回 0 条。
+  合并规则：实体按 name/alias 对齐；只合并活事实；单值谓词按 `observed_at` 新的赢；
+  多值追加；重复导入幂等；**删除不传播**（bundle v2 再做 tombstone）。导入成功后 bundle
+  改名 `.imported`，避免再点一次把删掉的事实复活。
+  **踩坑**：①导出时把 workspace 当成 `dsh-home/workspace`，实际是 `<filesDir>/workspace`
+  （`HOME` 的兄弟目录）；②导入路径校验只允许 `dsh-home`，把 workspace 拒了；现在允许
+  app files 根下的两类路径。③项目同步「同名不覆盖」⇒ bundle 必须带时间戳。
+  **边界**：明文、配对码；不自动导入（同步进来的文件不自动进模型）；导入成功后 bundle
+  改名 `.imported`，手机端再次点「导入最新同步包」仍为 0 条（真机复验，未复活事实）；
+  bundle 超过 64MB 单文件上限时会被项目同步报出来。设计与合并细节见 `docs/ONTOLOGY.md` §5.1。
+- **端侧用户本体 v1：SQLite + pinned 注入 + 设置面板（2026-11-23 22:30–22:51，手机 CMM-AL10）**。
+  结论先行：**模型能写、会话能记、用户能删**。`@ohos/dsh-ontology` 用 `node:sqlite` 存
+  `<dsh-home>/ontology/ontology.db`（entity/fact/meta），受控词表（23 个谓词）、单值谓词
+  supersede、删除软 retire；`agent/pre-step` 只在 pinned 签名变化时注入硬约束；设置里新增
+  「它知道什么」全屏面板，读 `snapshot.json`、删除写 `commands/*.json`、分享 `summary.md`。
+  真机链路：一句「Remember: 我叫林舟、对花生过敏、不吃辣」→ 模型调用 `ontology`，3 条事实
+  （version 3，全部 pinned）；**新建会话**问「我叫什么/对什么过敏，不要调用工具」→ 直接答
+  「林舟 / 花生」，无工具调用（注入生效）；面板显示 3 条，逐条删除后空态；删除过敏后新会话
+  改答「没有记录，不等于过敏」（删除传播生效）；分享打开系统面板，`summary.md` 420B；
+  多次 force-stop 重启事实仍在。`snapshot.json` 为 0600，hdc shell 已读不到（mode 生效）。
+  system-prompt section 已注册，但**主动记忆（不说“记住”）未单独验收**，真机测试都用显式指令触发。
+  **踩坑**：实现中一次 `deploy.sh` 在旧进程还活着时安装，新进程 `dlopen libnode.so` 报
+  `Operation not permitted`；先 `aa force-stop` 再装、或装完重装一次即恢复。**未验/边界**：
+  平板（双栏）的面板/导入/注入已验（2026-11-24 同步条目）；无静态加密；`user_profile` 旧区块未迁移；快照上限 400 条、10k+ 行未压测；
+  本体同步已接（2026-11-24 条目）。设计与全部真机数据见 `docs/ONTOLOGY.md`。
+- **SQLite 探针：`node:sqlite` 在应用进程里跑通 WAL，force-stop 后数据仍在（2026-11-23 21:50–21:52，平板 MLR-AL00）**。
+  结论先行：**端侧能用 SQLite**——设备内嵌 Node v24.2.0 的 `libnode.so` 编进了 `node:sqlite`
+  （`node_use_sqlite: true` / `_register_sqlite`），`--jitless` 下建 `STRICT` 表、写、查都正常；
+  真机 SQLite **3.50.0**。`PRAGMA journal_mode = WAL` 生效，目录里出现 `spike.db-wal`(90672B) /
+  `spike.db-shm`(32768B)，force-stop 后重启 boot #2 读到 `facts=2`，WAL 重放成功。
+  探针插件 `@ohos/dsh-ontology-spike` 每次 boot 写一条 `spike.boot` 并注册 `ontology_spike` 工具；
+  boot-report `tools(32)` 含它（Python 关闭时基线 31）。首开含建表+写+报告 **125–176ms**。
+  模型侧也闭环：真机发 prompt 后模型调用 `add`，回 `added one fact (total 3) at
+  2026-11-23T13:54:58.141Z`，`facts` 2→3；这一轮暴露报告文件 `recent` 在 `add` 后没刷新
+  （`facts` 新、`recent` 旧），已修成写前重新查询（源码 + 构建产物；第二次装机时平板已断开，
+  未在真机复验该字段）。
+  两个真机发现：①`mkdir(0700)` 落成 **0755**、SQLite 文件 **0644**（与 `.git-token` 的 0600
+  同源问题，owner-only 不能只靠 mode 位）；②`node:sqlite` 仍是 experimental，启动打
+  `ExperimentalWarning`，不影响运行。**未验**：多连接并发、10k+ 行批量、备份、静态加密。
+  代价：一次 240MB 载荷装配 + 一次增量 HAP 构建（约 3s）+ 装机，无新依赖、未改 dsh 源码。
+  设计与下一步（工具 / `agent.inject` / AGENTS.md 投影、OWL 边界）见 `docs/ONTOLOGY.md`。
+- **本机窄意图 gate：问候/身份/感谢/告别不调用大模型（2026-11-23 22:06，代码+LocalUnit；真机待验）**。
+  在 `Index.dispatchSend` 最前面做精确匹配（`LocalGate.ets`）：命中就写用户消息 + 本机回复（note `本机规则`），
+  **不开 dsh session、不发 `session/prompt`、不产生 token**；任务型消息（如「你好，帮我写周报」）和带附件消息
+  一律落到真实 agent。LocalUnit 新增 8 组用例（问候/身份/感谢/告别/帮助/时间日期/四则运算/不吞任务），覆盖率 **16.9%**。
+  **真机验成（2026-11-23 22:17，CMM-AL10）**：解锁后发 `你是谁` / `1+1`，立即出现本机回复并显示 `本机规则 · 未调用云端模型`；`1+1 = 2` 在界面确认。
+  dsh session 日志里没有 `本机规则` / `1+1 = 2` / 身份回复。注意并行会话会写同一个 `sessions` 目录，文件大小不能当本 gate 的判据。
+  同日补 **规则缓存**：`<filesDir>/local-gate-cache.json` 写入
+  `{"version":1,"hits":1,"misses":0,"entries":[{"key":"1+1","count":1,"intent":"math","hit":true}]}`，
+  设置 → 诊断的 `--- local gate ---` 显示 hits/misses 与未命中前 5 条；只做候选提示，
+  **不自动回放模型答案**。
+  此前的「Application process died」是 **17:59 的旧 `THREAD_BLOCK_6S`** smoke 日志 + 锁屏导致的启动失败，
+  与本次构建无关。
+- **端侧 Python spike：Pyodide 3.13.2 + pandas 在隐藏 WebView 的 Worker 里跑通（2026-11-23 20:00–20:55，手机 CMM-AL10）**。
+  结论先行：**“禁 fork/exec”不等于不能跑 Python**——解释器可以像 libnode 一样嵌进进程。
+  Pyodide 0.29（CPython 3.13.2）core 约 11.7MiB 放进 rawfile；`resource://rawfile` 不能承载动态
+  import / wasm fetch（真机报 `Failed to fetch dynamically imported module`），改由 ArkTS 起
+  **127.0.0.1 只读 HTTP server** 提供资产后通过。链路是 1×1 隐藏 `Web` → `javaScriptProxy` →
+  `<DSH_HOME>/python/{req,res}` 文件桥 ← `@ohos/dsh-tool-python` 的 `python_run`。
+  **两轮迭代的关键教训**：第一版把 Pyodide 放主线程，`while True: pass` 会把整个 WebView（定时器、
+  导航、桥）一起冻住，`controller.refresh()` 和换 `src` 都排不进去；改成 **Web Worker** 后，主线程
+  用 `terminate()` 掐掉死循环，下一次调用重新加载解释器即可恢复。
+  真机数据：`sys.version` + `print(1+1)` 3225ms；`pandas 2.3.2` groupby **7735ms**（含加载）；
+  `files:["data.csv"]` → `/workspace/data.csv` → `read_csv` 成功；死循环 `timeout_ms=3000` 3.1s
+  返回、下一次正常调用 **2476ms** 恢复；后台 `sleep(20)` 切后台 25s 实测 **40.2s**（仍会冻结）。
+  HAP **387MB**（Pyodide core+pandas 375MB；pybot 样本 +12MB）；整进程 RSS pandas **601MB / 680MB**、pybot **648MB / 684MB**（含 Node）；12 个插件单测；默认关闭开关验成：关闭时 boot-report `tools(32)` 且不挂隐藏 WebView，Settings 开启 + 重启后 `tools(34)`、`python_run` 跑出 `opt-in-ok 2`。
+  **pybot 压测样本**（Hugging Face / Apache-2.0，非 DeepSeek 官方；12MB zip 内置，`packages: []`）：
+  冷启 **25.7s**、热回答 **0.8–4.0s**（`pybot_reply` 工具：answers 777ms / memory_store 4002ms）、
+  多轮记忆 `You're Sam.` 成功；冷启 ≤60s / RSS ≤900MB 两个门槛过，热回答在 2–8s 估算内；它不增加 dsh 工具能力，26% 胜率也不适合当离线兜底。
+  boot-report `tools(34)` 含 `python_run` / `pybot_reply`。
+  **已补**：默认关闭的 Settings 实验开关 + `PythonHost` 门控——关闭时 `tools(32)` 且不挂隐藏
+  WebView，开启并重启后 `tools(34)`、`python_run` 跑出 `opt-in-ok 2`。
+  **没过的/没做的**：① 输出文件桥（Python 不能写回工作区）；② 5MB base64 压测（只验了小 CSV，
+  上限按 8 文件/5MB/15MB 设计）；③ micropip 离线装包；④ CSP/禁网/桥最小权限——WebView 仍可联网，
+  脚本可经 Pyodide 的 JS 桥访问 `fetch`；⑤ 后台保活。因此这只是 **spike**，不按产品能力宣传；
+  产品化清单见 `docs/PYTHON.md` §6。
+
 - **产物栏不能左右滑动 → Row 的 `width('100%')` 把 Scroll 内容量成一屏（2026-11-23 19:00，手机 CMM-AL10）**。
   现象：产物超过 3 个时第 4、5 个被裁掉，左右滑动没有反应。根因：横向 `Scroll` 里的 `Row` 写了
   `.width('100%')`，Scroll 按一屏宽度测量内容，卡片溢出但没有可滚动范围。修法：去掉 Row 的

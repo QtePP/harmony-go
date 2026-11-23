@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit'
 import { InteropSheet } from './InteropSheet'
+import { OntologyPanel } from './OntologyPanel'
 import { PluginRow } from '../model/PluginCatalog'
 import { AppConfig } from '../common/AppConfig'
 import { fetchModels, ModelEntry } from '../common/ModelCatalog'
@@ -52,6 +53,7 @@ export struct SettingsSheet {
   @StorageLink('speechAsrUsable') speechAsrUsable: boolean = true
   /** Local model discovery: results of the last scan, and what is adopted now. */
   @State showInterop: boolean = false
+  @State showOntology: boolean = false
   @State scanning: boolean = false
   @State scanned: LocalModel[] = []
   @State scannedOnce: boolean = false
@@ -169,12 +171,44 @@ export struct SettingsSheet {
     // Index.ets (`height: '92%'` instead of SheetSize.LARGE), not a second
     // scroll container: splitting it into scroll + pinned footer squeezed the
     // scroll area to ~190px and made it worse.
+    // The ontology panel is an opaque full-cover inside this sheet; a nested
+    // sheet would stack two drag surfaces on a phone.
+    Stack() {
     Scroll() {
       Column({ space: 14 }) {
         Text('设置')
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
           .width('100%')
+
+        Column({ space: 8 }) {
+          Row({ space: 10 }) {
+            Column({ space: 2 }) {
+              Text('它知道什么')
+                .fontSize(14)
+                .fontColor($r('app.color.text_primary'))
+              Text('存在本机的用户本体：姓名、忌口、关系、项目、承诺；可查看、删除、分享')
+                .fontSize(11)
+                .fontColor($r('app.color.text_tertiary'))
+                .maxLines(2)
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1)
+
+            Button('打开')
+              .fontSize(12)
+              .height(32)
+              .backgroundColor($r('app.color.surface_muted'))
+              .fontColor($r('app.color.text_primary'))
+              .onClick(() => {
+                this.showOntology = true
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .width('100%')
 
         Column({ space: 6 }) {
           Text('DeepSeek API Key').fontSize(12).fontColor($r('app.color.text_secondary'))
@@ -754,5 +788,12 @@ export struct SettingsSheet {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.background'))
+
+    if (this.showOntology) {
+      OntologyPanel({ onClose: () => { this.showOntology = false } })
+    }
+    }
+    .width('100%')
+    .height('100%')
   }
 }
