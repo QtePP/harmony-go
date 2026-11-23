@@ -58,7 +58,6 @@ export struct SyncSheet {
   private sessionStore: SessionStore = new SessionStore()
   private nlReceiver: NearLinkSyncReceiver | null = null
   @StorageLink('accent') accent: string = '#4D6BFE'
-  onClose: () => void = () => {}
   private receiver: SyncReceiver | null = null
   private cancelRequested: boolean = false
 
@@ -84,6 +83,14 @@ export struct SyncSheet {
     this.selectedSessions = []
   }
 
+  /**
+   * The only teardown path now that the panel has no close button of its own:
+   * the sheet's ✕, a swipe-down and the parent closing all land here.
+   *
+   * Both receivers are closed: the Wi-Fi one also drops its staging tree, and
+   * the 星闪 one closed nothing at all before, so dismissing the panel during
+   * an advertising session leaked the port until the process died.
+   */
   aboutToDisappear(): void {
     this.cancelRequested = true
     if (this.receiver !== null) {
@@ -91,6 +98,11 @@ export struct SyncSheet {
       removeTree(`${(getContext(this) as common.UIAbilityContext).cacheDir}/sync-incoming`)
       this.receiver = null
     }
+    if (this.nlReceiver !== null) {
+      void this.nlReceiver.close()
+      this.nlReceiver = null
+    }
+    this.receiveCode = ''
     this.receiving = false
   }
 
@@ -380,26 +392,11 @@ export struct SyncSheet {
   build() {
     Scroll() {
       Column({ space: 12 }) {
+      // No close button here: the sheet already draws its own ✕ in the corner,
+      // and two ways to dismiss the same panel read as a bug. Cleanup lives in
+      // aboutToDisappear, which runs for the ✕, a swipe-down and a drag too.
       Row() {
         Text('项目同步').fontSize(18).fontWeight(FontWeight.Medium)
-        Blank()
-        Button('关闭')
-          .fontSize(13)
-          .height(32)
-          .backgroundColor($r('app.color.surface_muted'))
-          .fontColor($r('app.color.text_primary'))
-          .onClick(() => {
-            if (this.receiver !== null) {
-              void this.receiver.close()
-              this.receiver = null
-            }
-            if (this.nlReceiver !== null) {
-              void this.nlReceiver.close()
-              this.nlReceiver = null
-            }
-            this.receiveCode = ''
-            this.onClose()
-          })
       }
       .width('100%')
 

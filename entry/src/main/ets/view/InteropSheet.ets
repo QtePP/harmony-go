@@ -436,10 +436,6 @@ export struct InteropSheet {
 
   @Builder
   syncSheet() {
-    SyncSheet({
-      onClose: () => {
-        this.showSync = false
-      }
-    })
+    SyncSheet()
   }
 }
