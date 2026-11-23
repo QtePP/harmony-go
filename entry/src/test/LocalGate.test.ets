@@ -21,6 +21,28 @@ export default function localGateTest() {
       expect(matchLocalIntent('bye')?.intent).assertEqual('bye');
     });
 
+    it('treats one trailing tone particle as the same intent', 0, () => {
+      expect(matchLocalIntent('你好啊')?.intent).assertEqual('greeting');
+      expect(matchLocalIntent('您好呀')?.intent).assertEqual('greeting');
+      expect(matchLocalIntent('在吗呢')?.intent).assertEqual('greeting');
+      expect(matchLocalIntent('谢谢啊')?.intent).assertEqual('thanks');
+      expect(matchLocalIntent('再见吧')?.intent).assertEqual('bye');
+      expect(matchLocalIntent('你是谁啊')?.intent).assertEqual('identity');
+      expect(matchLocalIntent('现在几点啦')?.intent).assertEqual('time');
+      expect(matchLocalIntent('HI呀')?.intent).assertEqual('greeting');
+      expect(matchLocalIntent('算一下 3+4啊')?.intent).assertEqual('math');
+    });
+
+    it('does not stretch the tone rule into a fuzzy matcher', 0, () => {
+      // Two particles, or a particle on an unknown phrase, stay misses.
+      expect(matchLocalIntent('你好啊啊')).assertNull();
+      expect(matchLocalIntent('你好啊，帮我写一个周报')).assertNull();
+      expect(matchLocalIntent('好的吧')).assertNull();
+      expect(matchLocalIntent('天啊')).assertNull();
+      expect(matchLocalIntent('早点睡吧')).assertNull();
+      expect(matchLocalIntent('谢谢你啊')).assertNull();
+    });
+
     it('does not swallow a task that merely starts with a greeting', 0, () => {
       expect(matchLocalIntent('你好，帮我写一个周报')).assertNull();
       expect(matchLocalIntent('hello, summarize this file')).assertNull();

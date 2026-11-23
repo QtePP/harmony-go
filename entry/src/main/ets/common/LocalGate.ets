@@ -62,6 +62,36 @@ export function normalizeLocalGateText(text: string): string {
   return value.trim()
 }
 
+/**
+ * A single trailing tone particle ("你好啊", "谢谢呀", "在吗呢") is the same
+ * intent as the bare phrase. Only one particle is tolerated: "你好啊啊" stays a
+ * miss, because a second particle is the kind of drift this rule must not grow
+ * into a fuzzy matcher. Anything with more words after the particle never
+ * reaches this helper — the array check still requires the whole string.
+ */
+const TONE_SUFFIXES: string[] = ['啊', '呀', '呢', '吧', '哦', '哇', '嘛', '啦']
+
+/** The text without one trailing tone particle, or '' when there is none. */
+export function stripToneSuffix(value: string): string {
+  if (value.length <= 1) {
+    return ''
+  }
+  const last = value.charAt(value.length - 1)
+  if (TONE_SUFFIXES.indexOf(last) < 0) {
+    return ''
+  }
+  const base = value.substring(0, value.length - 1).trim()
+  return base.length > 0 ? base : ''
+}
+
+/** Exact match against a whitelist, or against it minus one tone particle. */
+function inList(list: string[], value: string, base: string): boolean {
+  if (list.indexOf(value) >= 0) {
+    return true
+  }
+  return base.length > 0 && list.indexOf(base) >= 0
+}
+
 function pad(value: number): string {
   return value < 10 ? `0${value}` : `${value}`
 }
@@ -242,30 +272,36 @@ export function matchLocalIntent(text: string, context: LocalGateContext = new L
   if (value.length === 0) {
     return null
   }
-  if (IDENTITY.indexOf(value) >= 0) {
+  // The bare phrase and the same phrase with one trailing tone particle are
+  // the same intent; every other variation still falls through to the agent.
+  const base = stripToneSuffix(value)
+  if (inList(IDENTITY, value, base)) {
     return new LocalGateReply('identity',
       '我是 HarmonyGo，一个跑在鸿蒙设备上的 dsh 外壳；这条回复由本机规则直接给出，没有调用云端模型。')
   }
-  if (HELP.indexOf(value) >= 0) {
+  if (inList(HELP, value, base)) {
     return new LocalGateReply('help',
       '我可以对话、读写工作区文件、生成和预览 Office 文档、联网搜索，也可以在实验设置里跑 Python。具体的工具和开关在输入框旁的菜单里。')
   }
-  if (TIME.indexOf(value) >= 0) {
+  if (inList(TIME, value, base)) {
     return new LocalGateReply('time', timeReply(context.now))
   }
-  if (DATE.indexOf(value) >= 0) {
+  if (inList(DATE, value, base)) {
     return new LocalGateReply('date', dateReply(context.now))
   }
-  if (GREETINGS.indexOf(value) >= 0) {
+  if (inList(GREETINGS, value, base)) {
     return new LocalGateReply('greeting', '你好，我在。要处理什么？')
   }
-  if (THANKS.indexOf(value) >= 0) {
+  if (inList(THANKS, value, base)) {
     return new LocalGateReply('thanks', '不客气。')
   }
-  if (BYES.indexOf(value) >= 0) {
+  if (inList(BYES, value, base)) {
     return new LocalGateReply('bye', '再见。')
   }
-  const expression = arithmeticExpression(value)
+  let expression = arithmeticExpression(value)
+  if (expression === null && base.length > 0) {
+    expression = arithmeticExpression(base)
+  }
   if (expression !== null) {
     const result = new ArithmeticParser().parse(expression)
     if (result !== null) {
