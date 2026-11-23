@@ -5,6 +5,7 @@ import { fileIo as fs } from '@kit.CoreFileKit'
 import { MdText } from './Markdown'
 import { saveToGallery } from '../common/Gallery'
 import { shareFile } from '../common/FileShare'
+import { enableWholePageDrawing, exportPageAsPdf, exportPageAsPng, ExportOutcome } from '../common/PageExport'
 
 /** How a referenced file renders. */
 enum PreviewKind {
@@ -74,10 +75,16 @@ export struct FileViewer {
    * button appeared present but did nothing.
    */
   @State topInset: number = 0
+  /** Export menu is open (Web previews only). */
+  @State exportOpen: boolean = false
+  @State exporting: boolean = false
   onClose: () => void = () => {}
   private controller: webview.WebviewController = new webview.WebviewController()
 
   aboutToAppear(): void {
+    // Must happen while the Web component is being created, otherwise a
+    // snapshot only ever captures the viewport.
+    enableWholePageDrawing()
     this.open()
     this.measureInset()
   }
@@ -145,6 +152,77 @@ export struct FileViewer {
     this.getUIContext().getPromptAction().showToast({ message: message, duration: 2200 })
   }
 
+  /**
+   * Render the whole HTML page into a file and hand it to the share panel.
+   *
+   * The share panel is the point of the export: a long image or a PDF that
+   * stays inside the app would be a screenshot nobody can send.
+   */
+  private async exportPage(asPdf: boolean): Promise<void> {
+    if (this.exporting) {
+      return
+    }
+    this.exporting = true
+    this.exportOpen = false
+    const context = getContext(this) as common.UIAbilityContext
+    try {
+      const outcome: ExportOutcome = asPdf
+        ? await exportPageAsPdf(context, this.controller, this.fileName)
+        : await exportPageAsPng(context, this.controller, this.fileName)
+      if (!outcome.ok) {
+        this.getUIContext().getPromptAction().showToast({ message: outcome.message, duration: 2600 })
+        return
+      }
+      const message = await shareFile(context, outcome.path)
+      this.getUIContext().getPromptAction().showToast({ message: message, duration: 2400 })
+    } finally {
+      this.exporting = false
+    }
+  }
+
+  /** Two rows, because "image or PDF" is the only choice a page has. */
+  @Builder
+  exportMenu() {
+    Column({ space: 2 }) {
+      Row({ space: 10 }) {
+        SymbolGlyph($r('sys.symbol.picture'))
+          .fontSize(16)
+          .fontColor([$r('app.color.text_primary')])
+        Column({ space: 1 }) {
+          Text('导出为长图 PNG').fontSize(14).fontColor($r('app.color.text_primary'))
+          Text('整页一张图，适合发社交软件').fontSize(11).fontColor($r('app.color.text_tertiary'))
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+      }
+      .width(200)
+      .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+      .onClick(() => {
+        void this.exportPage(false)
+      })
+
+      Divider().color($r('app.color.divider')).margin({ left: 12, right: 12 })
+
+      Row({ space: 10 }) {
+        SymbolGlyph($r('sys.symbol.doc_text'))
+          .fontSize(16)
+          .fontColor([$r('app.color.text_primary')])
+        Column({ space: 1 }) {
+          Text('导出为 PDF').fontSize(14).fontColor($r('app.color.text_primary'))
+          Text('单页长文档，适合打印或存档').fontSize(11).fontColor($r('app.color.text_tertiary'))
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+      }
+      .width(200)
+      .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+      .onClick(() => {
+        void this.exportPage(true)
+      })
+    }
+    .padding({ top: 4, bottom: 4 })
+  }
+
   build() {
     Column() {
       Row() {
@@ -163,6 +241,35 @@ export struct FileViewer {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .margin({ left: 12, right: 12 })
+
+        // A long HTML page cannot be sent as a page, so export comes first and
+        // puts a single file (long image or PDF) in front of the share panel.
+        if (this.kind === PreviewKind.WEB && this.failed.length === 0) {
+          Button(this.exporting ? '导出中…' : '导出')
+            .fontSize(13)
+            .height(32)
+            .backgroundColor($r('app.color.surface_muted'))
+            .fontColor($r('app.color.text_primary'))
+            .enabled(!this.exporting)
+            .margin({ right: 8 })
+            .bindPopup(this.exportOpen, {
+              builder: (): void => {
+                this.exportMenu()
+              },
+              placement: Placement.Bottom,
+              popupColor: $r('app.color.surface'),
+              enableArrow: true,
+              autoCancel: true,
+              onStateChange: (state: PopupStateChangeParam) => {
+                if (!state.isVisible) {
+                  this.exportOpen = false
+                }
+              }
+            })
+            .onClick(() => {
+              this.exportOpen = !this.exportOpen
+            })
+        }
 
         // Share sits beside the type-specific action rather than behind a menu:
         // opening a file is already deliberate, so sending it is one tap away.

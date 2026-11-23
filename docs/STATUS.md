@@ -208,6 +208,18 @@
   **「。今天天气不错。」**，日志同时出现 `Infer runModel [Decjoint]` 与 `VadInferEvad`（VAD 在跑）。
   这台设备上之前那条「离线语音引擎验成」只证明了**引擎能启动**，不证明识别出字，本条更正。
 
+- **HTML 产物导出长图 PNG / 单页 PDF 并分享（2026-11-23 17:45，手机 CMM-AL10）**。
+  需求：生成的可视化网页（长页面）想直接发出去，截图只有一屏。
+  实现：`FileViewer` 的 Web 预览新增「导出」菜单（长图 PNG / PDF），走
+  `webview.WebviewController.enableWholeWebPageDrawing()` + `webPageSnapshot()`
+  （**整页绘制开关必须在 Web 创建期间打开**，否则只能拿到视口大小的图，且不会报错）；
+  输出写到 `haps/entry/cache/exports/` 后直接调 `shareFile()` 拉起系统分享面板。
+  PDF 不引任何库：把整页 JPEG 按 `DCTDecode` 嵌进单页 PDF，页面尺寸按图片原比例
+  （96dpi→pt）算，长文就是一页长文档，不会被切成多张 A4。
+  真机验证（`one-hour-fitness-plan.html`，健康计划页）：PNG **1323×16000 像素 / 945KB**、
+  PDF **MediaBox 992.25×12000pt / 968KB**，两份文件都从设备取回校验（PDF 用 `qlmanage` 渲染缩略图
+  确认整页内容在），每次导出后系统分享面板正常弹出（「分享 1 项」）。
+
 > 载荷里的 `payload/docs/` 是构建期快照（`assemble-payload.mjs` 的 `stageDocs()` 拷 `docs/*.md`），
 > 权威副本始终是本文件。
 

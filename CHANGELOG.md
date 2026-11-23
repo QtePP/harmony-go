@@ -18,6 +18,13 @@
 
 ### 新增
 
+- **HTML 产物导出为整页长图 PNG / 单页 PDF 并分享（2026-11-23 真机）**。Web 预览新增「导出」菜单：
+  `enableWholeWebPageDrawing()` + `webPageSnapshot()` 拿整页位图，PNG 直接编码；PDF 不引库，把整页
+  JPEG 以 `DCTDecode` 嵌进单页 PDF（页面按原比例，长文保持一页长文档），生成后直接拉起系统分享面板。
+  真机验收：健康计划页导出 **1323×16000 / 945KB** 的 PNG 与 **992.25×12000pt / 968KB** 的 PDF，
+  文件取回复核、PDF 渲染正常。
+
+
 - **项目文件同步：整个工作区或用勾选的文件，从一台设备发到另一台（2026-11-23 真机双向验成）**。
   和「互联」的文本消息是两套东西：消息是一行 JSON，一个项目是带二进制文件的目录树。
   新协议在 `common/ProjectSync.ets`：`[u32 headerLen][header JSON][u32 dataLen][data]` 分帧，
