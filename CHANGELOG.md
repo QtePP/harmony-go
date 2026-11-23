@@ -113,6 +113,12 @@
   启动后 `dsh_settings` 变成 `deepseek-flash`；设置页选 `deepseek-v4-pro` → 保存 → preferences 变
   `deepseek-v4-pro`；再选回 flash → 保存 → 落盘为 `deepseek-flash`。
 
+- **`push` 修两个真 bug（真 token 直连验成）**：①推**新分支**必须 `force: true`，工具此前没传，
+  于是只能推远端已存在的分支；②`push` 一个「远端有、本地没有」的 ref，js-git 在联网前就抛
+  `NotFoundError: Could not find <ref>`——读起来像网络故障，其实是本地没有该分支。现在先
+  `listBranches` 预检，报 `GIT_NO_LOCAL_REF` 并列出本地分支名。真 token 直连验证：推探针分支
+  → `ok:true`，GitHub API 侧确认分支存在，随后删除（`204`/`404`）。单测 47 → 49。
+
 - **GitHub token 可在设置页填，`push` 能读到（真机验成）**：新增「GitHub Token（用于 git push）」输入框，
   存 preferences 并镜像到 `dsh-home/.git-token`。设备实证：输入 → 点「保存」→ `stat` 到
   `.git-token` 23 字节、内容与输入一致。`readToken()` 补 4 条单测（优先 `.git-token`、回落

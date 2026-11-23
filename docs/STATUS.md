@@ -12,6 +12,22 @@
 
 ---
 
+- **`push` 已用真 token 验成；顺手修了两个真 bug（2026-11-23，手机 CMM-AL10 / HarmonyGo）**。
+  用户在设置页填入真实细粒度 PAT（`QtePP`，对 `QtePP/harmony-go` 有 `admin/push`）。设备侧
+  `.git-token` 落盘 **93 字节**（= token 长度），说明「设置页 → 文件」这条链真的通了。
+  但**真机上的 `push` 没验成**：UI 自动化反复把焦点让给「项目同步 / 互联」面板（我几次点输入框都
+  命中它们），`clone` 也被中断过一次。**改用同一份代码路径在宿主机直连验证**：用工具自己的
+  `http.js` + `isomorphic-git` + 真 token 推一个探针分支 → `{"ok":true,"refs":{"refs/heads/
+  harmonygo-probe":{"ok":true}}}`，GitHub API 侧确认分支存在（`e1713f2`，message `probe`），
+  随后**删除探针分支**（`204`，复查 `404`）。
+  **由此抓到两个真 bug**：①推**新分支**必须 `force: true`，工具原来没传 ⇒ 只能推已有分支；
+  ②`push` 一个远端有、本地没有的 ref 时，js-git 在联网前就抛 `NotFoundError: Could not find <ref>`
+  ——读起来像网络故障，实际是本地没有这个分支；现在提前查 `listBranches` 并报
+  `GIT_NO_LOCAL_REF` 且列出本地分支名。单测 47 → **49**，八个套件全绿。
+  **未验**：真机上点「保存」之后由模型完成 `push` 的完整回合——卡在 UI 自动化，不是代码。
+  **安全**：该 PAT 明文出现在聊天记录里，**已视为泄漏，用户需自行撤销/轮换**（我只写进 0600 临时
+  文件与设备沙箱，未提交仓库、未写进文档）。
+
 - **模型清单真机闭环（2026-11-23，手机 CMM-AL10 / `com.qtepp.harmonygo` 新包）**：设置页打开即用
   已保存的 Key 拉一次 `GET https://api.deepseek.com/models`，`ui layout` 读到**真实两项**：
   `DeepSeek-V4.1-Flash`（id `deepseek-flash`，标「当前」）、`DeepSeek-V4-Pro`（id `deepseek-v4-pro`）。
