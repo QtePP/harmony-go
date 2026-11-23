@@ -2220,17 +2220,6 @@ export struct ChatView {
     return label.substring(0, 4)
   }
 
-  /**
-   * Width of the trailing strip, derived from the same conditions that decide
-   * which buttons the strip renders. Deriving it is the whole point: the strip
-   * changed shape twice (model chip, effort chip) while the reserve stayed a
-   * constant, and every drift ends with the draft running under the buttons.
-   */
-  private composerInset(): number {
-    const mic = this.speechReady && this.speechAsrUsable ? 34 + 6 : 0
-    return 6 + mic + 34 + 6
-  }
-
   onStop: () => void = () => {}
   /** Drop one queued turn before it is sent (index into `queued`). */
   onDequeue: (index: number) => void = () => {}
@@ -3337,83 +3326,77 @@ export struct ChatView {
             .animation({ duration: 220, curve: Curve.EaseOut }))
         }
 
-        Row({ space: 10 }) {
-          Stack({ alignContent: Alignment.End }) {
-            TextArea({ text: this.draft })
-              .width('100%')
-              .fontSize(15)
-              // The right inset comes from composerInset(), which is derived
-              // from the same conditions that decide what the strip below
-              // renders. The old fixed 48/86 number was tuned for a strip that
-              // has since grown, and a stale constant is what let long drafts
-              // run underneath the buttons.
-              .padding({ left: 12, right: this.composerInset(), top: 8, bottom: 8 })
-              .constraintSize({ minHeight: 44, maxHeight: 132 })
-              .backgroundColor($r('app.color.surface_muted'))
-              .borderRadius(14)
-              .border({
-                width: 1,
-                color: this.composerFocused ? 'rgba(77,107,254,0.45)' : Color.Transparent
-              })
-              .animation({ duration: 160, curve: Curve.EaseOut })
-              .onFocus(() => {
-                this.composerFocused = true
-              })
-              .onBlur(() => {
-                this.composerFocused = false
-              })
-              .onChange((value: string) => {
-                this.draft = value
-              })
-
-            Row({ space: 6 }) {
-              // Dictation sits before the image picker: speaking is the faster
-              // way in, and it is the control people reach for most.
-              if (this.speechReady && this.speechAsrUsable) {
-                Button({ type: ButtonType.Circle }) {
-                  Image($r('app.media.icon_mic'))
-                    .width(16)
-                    .height(16)
-                    .fillColor(this.dictating ? Color.White : $r('app.color.text_secondary'))
-                }
-                .width(34)
-                .height(34)
-                .backgroundColor(this.dictating ? this.accent : $r('app.color.surface'))
-                .accessibilityText(this.dictating ? '停止语音输入' : '语音输入')
-                .onClick(() => {
-                  void this.toggleDictation()
-                })
-              }
-
-              Button({ type: ButtonType.Circle }) {
-                Image($r('app.media.icon_image'))
-                  .width(16)
-                  .height(16)
-                  .fillColor($r('app.color.text_secondary'))
-              }
-              .width(34)
-              .height(34)
-              .backgroundColor($r('app.color.surface'))
-              .scale({
-                x: this.imagePressed ? 0.92 : 1,
-                y: this.imagePressed ? 0.92 : 1
-              })
-              .animation({ duration: 120, curve: Curve.EaseOut })
-              .onTouch((event: TouchEvent) => {
-                if (event.type === TouchType.Down) {
-                  this.imagePressed = true
-                } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-                  this.imagePressed = false
-                }
-              })
-              .onClick(() => this.onPickImage())
+        Row({ space: 8 }) {
+          // Dictation moves out to the left of the field: it is an input
+          // method, not an action on the text, so it belongs on the input side
+          // where the thumb already is.
+          if (this.speechReady && this.speechAsrUsable) {
+            Button({ type: ButtonType.Circle }) {
+              Image($r('app.media.icon_mic'))
+                .width(16)
+                .height(16)
+                .fillColor(this.dictating ? Color.White : $r('app.color.text_secondary'))
             }
-            .margin({ right: 6 })
-            .alignItems(VerticalAlign.Center)
+            .width(34)
+            .height(34)
+            .backgroundColor(this.dictating ? this.accent : $r('app.color.surface_muted'))
+            .accessibilityText(this.dictating ? '停止语音输入' : '语音输入')
+            .onClick(() => {
+              void this.toggleDictation()
+            })
           }
-          .layoutWeight(1)
+
+          // Nothing is overlaid on the draft any more, so the field needs no
+          // right inset at all — the two things that used to sit inside it now
+          // live on either side of it.
+          TextArea({ text: this.draft })
+            .fontSize(15)
+            .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+            .constraintSize({ minHeight: 44, maxHeight: 132 })
+            .backgroundColor($r('app.color.surface_muted'))
+            .borderRadius(14)
+            .border({
+              width: 1,
+              color: this.composerFocused ? 'rgba(77,107,254,0.45)' : Color.Transparent
+            })
+            .animation({ duration: 160, curve: Curve.EaseOut })
+            .layoutWeight(1)
+            .onFocus(() => {
+              this.composerFocused = true
+            })
+            .onBlur(() => {
+              this.composerFocused = false
+            })
+            .onChange((value: string) => {
+              this.draft = value
+            })
 
           this.contextRing()
+
+          // The image picker rides with the send button: both are actions the
+          // message leaves with, not controls in the field.
+          Button({ type: ButtonType.Circle }) {
+            Image($r('app.media.icon_image'))
+              .width(16)
+              .height(16)
+              .fillColor($r('app.color.text_secondary'))
+          }
+          .width(34)
+          .height(34)
+          .backgroundColor($r('app.color.surface_muted'))
+          .scale({
+            x: this.imagePressed ? 0.92 : 1,
+            y: this.imagePressed ? 0.92 : 1
+          })
+          .animation({ duration: 120, curve: Curve.EaseOut })
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.imagePressed = true
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.imagePressed = false
+            }
+          })
+          .onClick(() => this.onPickImage())
 
           Button(this.running ? '排队' : '发送', { type: ButtonType.Capsule })
             .height(44)
