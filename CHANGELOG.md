@@ -26,6 +26,20 @@
   真机（手机 CMM-AL10）：填假 token → 保存 → `dsh-home/.git-token` 出现且内容一致；冷启后
   `bridge.log` 打出 `key: .git-token tightened to 0600 (was 644)`；清空后保存 → 文件被删除。
 
+- **GitHub token 可在设置页填，`push` 能读到（真机验成）**：新增「GitHub Token（用于 git push）」输入框，
+  存 preferences 并镜像到 `dsh-home/.git-token`。设备实证：输入 → 点「保存」→ `stat` 到
+  `.git-token` 23 字节、内容与输入一致。`readToken()` 补 4 条单测（优先 `.git-token`、回落
+  `.api-key`、空白文件继续找、都没有返回空）。**未验证**：真实 token 的 push 成功（手上是假 token）。
+  **一处存疑必须写明**：`bootstrap.cjs` 打了 `git-token tightened to 0600 (was 644)`，但 `stat` 仍是
+  **644**；同一段代码的 `.api-key` 是 600。`chmodSync` 可能对某些文件静默无效，故**不再宣称 0600**，
+  记为待查（影响有限：沙箱按 uid 隔离）。
+- **设置面板把「保存」挤出屏幕（真机发现）**：加了 token 字段后内容变长，`SheetSize.LARGE` 只给到
+  约半屏，`保存` 落到面板下沿之外，且面板不滚动 ⇒ **按钮不可达**，不是「看不见」而已。改为
+  `height: '92%'`。中间试过「滚动区 + 底部固定操作栏」，反而把滚动区压到约 190px，已回滚并在注释里
+  写明，免得后人重犯。**UI 自动化三个坑**（详见 STATUS）：`ui layout` 默认只 dump 底层窗口（模态盖住
+  时坐标全错，必须 `--all-windows`）；软键盘弹出时面板只有 1606 高且手势只改尺寸不滚动；只有
+  `ui drag` 能可控滚动（`swipe` 滚不动、`dircfling` 会过头）。
+
 - **`git` 的 `force` 与 `HEAD~1` 已真机验成（失败路径优先）**：`snapshot`（2.0 MB / 8.7s）→
   `clone` 一个不存在的仓库 `force=true`（传输失败）→ `status` 仍报 `clean (164 paths)`（快照没被动）→
   `clone force=true`（4.4 MB / 13.0s）→ `diff` 不传 `base`/`head` 得到 `4 paths changed in

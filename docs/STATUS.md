@@ -12,6 +12,22 @@
 
 ---
 
+- **设置页填 GitHub token → `push` 能读到：真机闭环（2026-11-23，手机 CMM-AL10）**。设置页新增
+  「GitHub Token（用于 git push）」输入框，存 preferences 并镜像到 `dsh-home/.git-token`。真机实证：
+  输入 23 字符 → 点「保存」→ 设备上 `stat` 到 **`.git-token` 23 字节、内容 `ghp_plumbing_probe_1123`**
+  （与输入一致）。`readToken()` 另有 4 条单测（优先 `.git-token`、回落 `.api-key`、空白文件继续找、
+  都没有返回空）。**未验证**：真实 token 的 push 成功——手上的 token 是假的，且不该拿真 token 试。
+  **一个必须记下的矛盾**：`bootstrap.cjs` 的 `tightenKeyFile()` 明明打了
+  `key: .git-token tightened to 0600 (was 644)`，但同一时刻 `stat -c %a` 给的是 **644**；
+  而同一段代码处理的 `.api-key` 是 **600**。hdc 侧 `chmod` 一律 `Operation not permitted`（已知）。
+  也就是说**「收紧到 0600」对 `.git-token` 没能证实**，`chmodSync` 可能在某些文件上静默无效。
+  影响有限（应用沙箱按 uid 隔离，别的 App 读不到），但**口径里不能写「0600」**，先记为待查。
+  **UI 自动化的三个坑（白耗了一小时）**：①`ui layout` 默认**只 dump 底层窗口**，模态面板盖在上面时
+  看到的是错误的坐标——必须加 `--all-windows`；②面板在**软键盘弹出时只有 1606 高**，此时手势只改变
+  面板尺寸、**不滚动内容**，键盘收起后才是 2848 且可滚；③`ui swipe` 滚不动（还会被当成下拉关闭），
+  `dircfling` 会过头到顶/底，**只有 `ui drag` 能可控滚动**。另外 dump 偶发
+  `Empty dumpLayout response from device`，别当成「面板已关闭」。
+
 - **长按文件就能分享；设置面板在手机上重新够得到（2026-11-23 09:15，Mate 90 Pro Max）**。
   换到**手机**形态：`const.product.name` = HUAWEI Mate 90 Pro Max 典藏版、`model` = CMM-AL10、
   `devicetype` = phone、HarmonyOS 7.0.0.111、1320×2848 —— 本仓**第一次在 <840vp 单栏**上验
