@@ -332,7 +332,7 @@ ACP 实测契约（勿凭直觉改）：
 | `docs/BREAKTHROUGHS.md` | **突破清单 + 代价**：四条判据（平台说不行/无方案可抄/真机闭环/用户可感知）筛出的六件平台级突破——同进程 Node、进程内 ACP、jitless fetch、自定义 profile、三条降级链、可观测性，每件带证据与代价；另含协议契约、方法论、以及诚实的「什么不算突破」。排版版 `docs/breakthroughs.html`（与 `docs/on-device-architecture.html` 同一套设计，后者讲「现在长什么样」，前者讲「哪些是硬啃下来的」） |
 | `docs/BOOT.md` | **启动链路走读**：点开图标 → EntryAbility → NodeHost.boot → dlopen/node::Start → bootstrap.cjs 十个垫片 → runCli/profile 挂载；含「哪些脚本在什么时候跑」的分类表与 6 个文件的阅读顺序 |
 | `docs/HTML-COMPONENTS.md` | **HTML 组件库（A2UI）**：`html` 工具内置的 **28 个组件 + 令牌/修饰符**清单与可复制片段（含柱状/堆叠/横向/折线/热力图表、可排序分页表格、图与方案卡；快照，权威来源是插件的 `components` 动作），以及「只选组件、观感改令牌」的用法约定 |
-| `docs/DEMO-E2E.md` | **三条端到端验收（手工）**：项目一手机里算（python_run/pandas → xlsx/docx/html）、项目二 express 报错、项目三 harmony-go 报错；含 Python 开关、三处验收（App 内打开 Office、HTML 导出三件、force-stop 持久化） |
+| `docs/DEMO-E2E.md` | **三条端到端验收（手工）**：A 生活管家（语音写入本体 → pandas 真算 → HTML → 导出/朗读）、B 故障急救（图片多模态读截图 → 纯 JS git 修提交 → 文件+会话同步到平板）、C 办公周报（Python 汇总 → docx/xlsx 原生预览 → HTML 长图 → 本体 bundle 跨设备）；含前置开关、逐条验收清单、覆盖矩阵与结果记录模板 |
 | `docs/LOCAL-GATE.md` | **本机窄意图 gate**：问候/身份/感谢/告别/帮助/时间日期/四则运算的精确规则在 `dispatchSend` 最前面直接回复，不开 session、不调用云端模型、不产生 token；任务型消息不拦截，本地回复带 `本机规则` note；`LocalGateCache` 记 hits/misses 与未命中候选（诊断页），不自动回放模型答案；8 组 LocalUnit，真机验成 |
 | `docs/PYTHON.md` | **端侧 Python（实验）**：Pyodide-in-WebView 架构、loopback HTTP、Worker 隔离与超时重启、文件输入桥、pandas/numpy 实测、后台冻结/安全/默认关闭开关/pybot 压测 |
 | `docs/OFFICE.md` | **端侧 Office**：为什么自带 Office 栈在手机上不可用、`office_*` 三个工具的输入输出、纯 JS ZIP/OOXML 结构、FileViewer 原生预览的解析与上限、真机验收与已知边界 |

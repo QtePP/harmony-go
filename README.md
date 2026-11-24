@@ -331,7 +331,7 @@ scripts/               # 载荷装配、一键部署、双远端推送（push-al
 | [LOCAL-GATE.md](docs/LOCAL-GATE.md) | 本机窄意图 gate：精确规则、语气词收尾、诊断记录 |
 | [CONTEXT-LEDGER.md](docs/CONTEXT-LEDGER.md) | 上下文账本与原生面板：记录格式与验收 |
 | [PROJECT-SYNC.md](docs/PROJECT-SYNC.md) | 项目同步：文件/会话/本体 bundle，TCP 与星闪两条传输 |
-| [DEMO-E2E.md](docs/DEMO-E2E.md) | 三条端到端手工验收脚本 |
+| [DEMO-E2E.md](docs/DEMO-E2E.md) | 三条端到端手工验收：语音/本体/Python/HTML/导出、图片多模态/git/同步、Office/本体跨设备 |
 | [NEEDS-ANALYSIS.md](docs/NEEDS-ANALYSIS.md) | 手机形态能力清单与需求评分 |
 | [ROADMAP.md](docs/ROADMAP.md) | 路线图 |
 | [DSH-GO-PARITY.md](docs/DSH-GO-PARITY.md) | 与 dsh-go 的能力对齐矩阵与协议边界 |
