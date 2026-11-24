@@ -299,3 +299,22 @@ DevEco Studio 里则直接 Build 即可（IDE 会读本地签名文件）。
 | 崩溃后无法恢复 | `node::Start` 不可重入 | 彻底退出应用再打开（UI 会明示） |
 
 诊断入口：设置 → 诊断，聚合了 phase、桥状态 JSON、Node 日志尾 120 行、崩溃记录。
+
+## 双远端推送（GitHub + AtomGit）
+
+`scripts/push-all.sh` 一次推两个远端：
+
+```bash
+ATOMGIT_TOKEN=<token> bash scripts/push-all.sh            # 两边都推
+ATOMGIT_TOKEN=<token> bash scripts/push-all.sh --dry-run  # 只看会推什么
+bash scripts/push-all.sh --tags                          # 连 tag 一起推
+```
+
+约定：
+
+- token 走环境变量 `ATOMGIT_TOKEN`，**不写 `.git/config`、不加带凭据的 remote**；
+  脚本内 URL 只在该次 `git push` 的进程内存里出现，输出会脱敏（可用 `--dry-run` 先验证）。
+- 缺 token 时脚本只推 GitHub，并打印开启 AtomGit 的方法。
+- `ATOMGIT_USER` / `ATOMGIT_REPO` 可覆盖默认值（见脚本头部注释）。
+- 工作区有未提交改动时脚本会提示「不会推送未提交内容」，但不会阻止推送已提交的历史。
+- 推完会打印 `local / origin / atomgit` 三个短 hash，便于确认三方一致。

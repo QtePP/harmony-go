@@ -279,7 +279,7 @@ host/
         └── dsh-boot-report           # 启动自检（写 bridge.log）
 
 docs/                  # 架构、构建、协议、差距分析
-scripts/               # 载荷装配、一键部署
+scripts/               # 载荷装配、一键部署、双远端推送（push-all.sh）
 ```
 
 ## 文档
@@ -336,6 +336,19 @@ devecocli build                            # 构建通过
 ```
 
 **安全红线**：API Key、签名材料、设备序列号一律不入库。
+
+### 同步到两个代码托管
+
+仓库同时发布在 GitHub 与 [AtomGit](https://atomgit.com/qq_446289021111111111111118aq/harmony-go)。
+一条命令把当前分支推到两边（AtomGit 的 token 只从环境变量读，不落盘）：
+
+```bash
+ATOMGIT_TOKEN=<你的令牌> bash scripts/push-all.sh
+bash scripts/push-all.sh --dry-run   # 只报告会推什么
+bash scripts/push-all.sh --tags      # 连 tag 一起推
+```
+
+没有 `ATOMGIT_TOKEN` 时只推 GitHub 并给出提示；脚本不会把 token 写进 `.git/config`。
 
 ## 致谢
 
