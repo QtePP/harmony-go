@@ -5,9 +5,14 @@
 #   GitHub  → origin (credentials already configured on this machine)
 #   AtomGit → HTTPS, using a token supplied in the environment
 #
-# The token is never written to disk: no remote with credentials is added, no
-# credential helper is asked to store it. It lives only in this process's
-# memory and in the push URL, which is not echoed.
+# The token is never written to disk by this script: no remote with credentials
+# is added, no credential helper is asked to store it. It lives in this
+# process's memory and in the push URL, which is not echoed. On macOS it may be
+# read from an existing Keychain item instead of the environment:
+#
+#   security add-generic-password -a atomgit -s atomgit-token -w   # store once
+#
+# ...after which plain `bash scripts/push-all.sh` works with no variables set.
 #
 # Usage:
 #   ATOMGIT_TOKEN=... bash scripts/push-all.sh
@@ -16,7 +21,9 @@
 #   bash scripts/push-all.sh --tags        # also push tags
 #
 # Environment:
-#   ATOMGIT_TOKEN   required for the AtomGit leg; without it GitHub-only
+#   ATOMGIT_TOKEN   required for the AtomGit leg; without it GitHub-only.
+#                   On macOS, when unset, the script falls back to the Keychain
+#                   item (account "atomgit", service "atomgit-token").
 #   ATOMGIT_USER    AtomGit account name (default: the repo owner below)
 #   ATOMGIT_REPO    owner/repo on AtomGit (default: the repo this ships with)
 #
@@ -72,13 +79,21 @@ git push $DRY_RUN $WITH_TAGS origin "$BRANCH" || fail "GitHub push failed"
 ATOMGIT_REPO="${ATOMGIT_REPO:-$ATOMGIT_DEFAULT_REPO}"
 ATOMGIT_USER="${ATOMGIT_USER:-$ATOMGIT_DEFAULT_USER}"
 ATOMGIT_TOKEN="${ATOMGIT_TOKEN:-}"
+KEYCHAIN_NOTE=""
+if [ -z "$ATOMGIT_TOKEN" ] && [ "$(uname -s 2>/dev/null)" = "Darwin" ] && command -v security >/dev/null 2>&1; then
+  ATOMGIT_TOKEN="$(security find-generic-password -a atomgit -s atomgit-token -w 2>/dev/null | tr -d '\n' || true)"
+  if [ -n "$ATOMGIT_TOKEN" ]; then
+    KEYCHAIN_NOTE=" (from macOS Keychain)"
+  fi
+fi
 
 say ""
 if [ -z "$ATOMGIT_TOKEN" ]; then
-  say "==> AtomGit skipped: ATOMGIT_TOKEN is empty"
-  say "    re-run as: ATOMGIT_TOKEN=<token> bash scripts/push-all.sh"
+  say "==> AtomGit skipped: no token in ATOMGIT_TOKEN and no Keychain item"
+  say "    store it once: security add-generic-password -a atomgit -s atomgit-token -w"
+  say "    or run with:   ATOMGIT_TOKEN=<token> bash scripts/push-all.sh"
 else
-  say "==> AtomGit ($ATOMGIT_HOST/$ATOMGIT_REPO)"
+  say "==> AtomGit ($ATOMGIT_HOST/$ATOMGIT_REPO)${KEYCHAIN_NOTE}"
   # The token goes into the URL only for this invocation; git never writes it
   # to .git/config because no remote is added. Do not set -x around this.
   ATOMGIT_URL="https://${ATOMGIT_USER}:${ATOMGIT_TOKEN}@${ATOMGIT_HOST}/${ATOMGIT_REPO}.git"

@@ -349,6 +349,8 @@ bash scripts/push-all.sh --tags      # 连 tag 一起推
 ```
 
 没有 `ATOMGIT_TOKEN` 时只推 GitHub 并给出提示；脚本不会把 token 写进 `.git/config`。
+在 macOS 上也可以把 token 存进 Keychain 一次（`security add-generic-password -a atomgit -s atomgit-token -w`），
+之后直接 `bash scripts/push-all.sh` 即可，无需环境变量。
 
 ## 致谢
 
