@@ -101,16 +101,16 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 <tr>
 <td width="33%">
 
-**导出**：整页长图 / 单页 PDF / 亮暗双长图
+**导出**：亮暗双长图 / 整页长图 PNG / 单页 PDF
 
 <img src="docs/images/screens/04-export.jpg" alt="导出菜单" width="100%">
 
 </td>
 <td width="33%">
 
-**HTML 产物**：暗色下的组件页面，可拉起分享
+**HTML 产物**：数据页真实渲染（饮食记录 × 训练消耗）
 
-<img src="docs/images/screens/05-html.jpg" alt="HTML 产物预览与分享" width="100%">
+<img src="docs/images/screens/05-html.jpg" alt="HTML 产物页面" width="100%">
 
 </td>
 <td width="33%">
@@ -141,6 +141,27 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 **设置**：密钥、GitHub Token、模型、能力开关
 
 <img src="docs/images/screens/09-settings.jpg" alt="设置" width="100%">
+
+</td>
+</tr>
+</table>
+
+### 长图成品与分享
+
+<table>
+<tr>
+<td width="28%" valign="top">
+
+**导出的整页长图**（实际产物，未拼接）
+
+<img src="docs/images/screens/10-long-image.jpg" alt="导出的整页长图" width="100%">
+
+</td>
+<td width="40%" valign="top">
+
+**分享面板**：整页长图作为 1 项 **2.07 MB** 交给系统，可发微信 / QQ / 华为分享
+
+<img src="docs/images/screens/11-share.jpg" alt="分享面板" width="100%">
 
 </td>
 </tr>
