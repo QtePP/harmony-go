@@ -23,15 +23,19 @@
 
 > **鸿蒙不是 agent 的孤岛。**
 
-**HarmonyGo 把完整的 dsh agent 运行时（Node v24.2.0 + 676 个依赖）装进 HarmonyOS 应用进程** —— 手机、平板、2in1 都能不连电脑直接跑 agent，并带端侧个人本体、Office/Python、产物导出与星闪/WiFi 同步。
+**HarmonyGo 把完整的 dsh agent 运行时（Node v24.2.0 + 676 个依赖）装进 HarmonyOS 应用进程** —— 手机、平板、2in1 不连电脑就能跑 agent；记忆（端侧本体）、文档（Office / HTML 产物）、设备间同步（WiFi / 星闪）也都在设备本地完成，不经过云端会话。
 
 三件事说清楚它：
 
-- **运行时**：同进程内嵌 Node 与 dsh，绕开鸿蒙「禁 fork/exec、`--jitless` 无 WASM」的宿主限制；agent 在设备本地运行（模型 API 仍联网）。
-- **记忆**：端侧 SQLite 个人本体，身份 / 过敏 / 偏好等**硬约束**跨会话自动带上，其余按需查询；可导出、可跨设备同步。
+- **运行时**：同进程内嵌 Node 与 dsh，用纯 JS 垫片绕开鸿蒙「禁 fork/exec、`--jitless` 无 WASM」的宿主限制 —— 让鸿蒙第一次能原生承载现代 agent 运行时（模型 API 仍联网）。
+- **记忆**：端侧 SQLite 个人本体，身份 / 过敏 / 偏好等**硬约束**跨会话自动带上，其余按需查询；可面板查看删除、可导出 bundle、可跨设备合并。
 - **协作面**：项目文件、会话缓存、本体 bundle 可经 **WiFi 或星闪** 在两台设备间同步；产物是原生 HTML / Office 文件，可导出长图 / PDF 再分享。
 
-> 对外口径、已验证 / 实验 / 边界清单见 [docs/POSITIONING.md](docs/POSITIONING.md)；鸿蒙 PC（2in1）待办见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+内核一句话：**把桌面级 agent 运行时挤进手机沙箱**——不是套壳浏览器，也不是远程调用；因此不用带电脑、不用 Office 订阅、不用把上下文搬到云端。
+
+头号功能是**端侧个人本体（Ontology）**：端侧 SQLite 存身份 / 过敏 / 语言 / 沟通偏好等硬约束，跨会话自动注入，可查看、删除、分享，可导出并对端合并。
+
+> 完整对外口径（SCP 场景-冲突-承诺、能怎么说 / 别怎么说、已验证 / 实验 / 边界状态表）见 [docs/POSITIONING.md](docs/POSITIONING.md)；鸿蒙 PC（2in1）迁移清单见 [docs/POSITIONING.md](docs/POSITIONING.md) §10 与 [docs/ROADMAP.md](docs/ROADMAP.md) §6。
 
 本仓库是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）的**鸿蒙外壳**：
 
@@ -49,7 +53,7 @@
 
 > **HarmonyOS is not an island for agents.**
 
-**HarmonyGo embeds a full dsh agent runtime — Node v24.2.0 and its dependency tree — inside a HarmonyOS app process**, so phones, tablets and 2in1 devices run an agent on-device without tethering. It adds an on-device personal ontology (SQLite), Office/Python tooling, HTML artifact export, and device-to-device sync over Wi-Fi or NearLink.
+**HarmonyGo embeds a full dsh agent runtime — Node v24.2.0 and its dependency tree — inside a HarmonyOS app process**, so phones, tablets and 2in1 devices run an agent on-device without tethering. Memory (an on-device SQLite ontology), documents (native Office and HTML artifacts), and device-to-device sync (Wi-Fi / NearLink) all happen locally rather than through a cloud session.
 
 This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`):
 
@@ -119,7 +123,7 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 
 ## 功能
 
-「已验证 / 实验 / 未验证」的完整状态见 [docs/POSITIONING.md](docs/POSITIONING.md) §5；标注「实验」的行默认关闭或非产品能力。
+「已验证 / 实验 / 未验证」的完整状态见 [docs/POSITIONING.md](docs/POSITIONING.md) §8；标注「实验」的行默认关闭或非产品能力。
 
 | 能力 | 说明 |
 |---|---|
@@ -309,7 +313,7 @@ scripts/               # 载荷装配、一键部署、双远端推送（push-al
 
 ## 已知边界
 
-诚实清单（完整状态表见 [docs/POSITIONING.md](docs/POSITIONING.md) §5）：
+诚实清单（完整状态表见 [docs/POSITIONING.md](docs/POSITIONING.md) §8）：
 
 - **无 token 级流式** —— 按块而非按 token 渲染
 - **无二进制工具面** —— 没有 `rg` / `bash` / `python3`；`git` 由纯 JS 插件替代（`repos/<slug>`），Python 走 Pyodide

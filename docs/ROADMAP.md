@@ -268,4 +268,4 @@ App 代码不需要改：载荷版本与 App 解耦，`payload.stamp` 变化会�
 ### 6.3 验收后要更新的文档
 
 `AGENTS.md` §7.1（形态覆盖率一句话）、`docs/STATUS.md`（PC 条目 + 设备型号）、
-`docs/POSITIONING.md` §5（把「未验证」改为「已验证」）、README 的形态描述。
+`docs/POSITIONING.md` §8（把「未验证」改为「已验证」）、README 的形态描述。
