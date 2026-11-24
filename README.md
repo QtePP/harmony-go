@@ -119,6 +119,8 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 
 ## 功能
 
+「已验证 / 实验 / 未验证」的完整状态见 [docs/POSITIONING.md](docs/POSITIONING.md) §5；标注「实验」的行默认关闭或非产品能力。
+
 | 能力 | 说明 |
 |---|---|
 | **本地运行时** | Node v24.2.0 内嵌在应用进程，无外部依赖 |
@@ -134,13 +136,18 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 | **会话管理** | 标题搜索、置顶、归档（可切回）、多选批量归档/删除、未读圆点 |
 | **导出对话** | `/导出对话` 把转录写成 Markdown 存进 `workspace/exports/` |
 | **产物面板** | 对话中生成的文件自动归档，支持内嵌预览与全屏查看 |
+| **HTML 产物导出** | 内置 A2UI 组件库（28 个组件 + 令牌/修饰符）生成单文件网页；预览页可导出整页长图 PNG、单页 PDF、**亮/暗双长图**，并拉起系统分享面板 |
+| **端侧 Office** | `office_write_docx` / `office_write_xlsx` / `office_read`：纯 JS ZIP+OOXML 生成与读取 Word/Excel，App 内原生只读预览（标题/列表/表格/工作表），不依赖外部 Office；旧格式与 PPTX 会引导分享到系统 Office/WPS |
+| **代码仓库** | 纯 JS `git` 工具：`clone` / `snapshot` / `pull` / `log` / `diff` / `status` / `commit` / `push`，落盘 `repos/<slug>`（推送需在设置页填 token） |
+| **项目同步** | 项目文件 + 会话缓存 + 本体 bundle，经 **WiFi（局域网 TCP）或星闪（NearLink）** 在两台设备间传输；6 位配对码，不覆盖已有文件 |
 | **本机快捷回复** | 问候 / 自我介绍 / 感谢 / 告别 / 时间日期 / 四则运算 / 能力帮助由本机精确规则直接回复，不调用云端模型，不产生 token；任务型消息不拦截；诊断页记录高频未命中，供人工提升为规则 |
-| **Python（实验）** | 内嵌 Pyodide（CPython 3.13）+ numpy/pandas，`python_run` 可跑 pandas groupby、经 `files` 读工作区 CSV；`pybot_reply` 跑内置 pybot；默认关闭、设置里开启；含 pybot（Hugging Face / Apache-2.0）压测样本；首次加载约 25s，后台会暂停，暂无输出文件桥；spike 阶段，详见 `docs/PYTHON.md` |
-| **Office 文档** | 让模型生成/读取 Word（`.docx`）与 Excel（`.xlsx`），App 内原生只读预览（标题/列表/表格/工作表）；旧格式与 PPTX 会引导分享到系统 Office/WPS |
+| **Python（实验）** | 内嵌 Pyodide（CPython 3.13 + numpy/pandas）跑在隐藏 WebView 的 Worker 里：`python_run` 可跑 pandas groupby、经 `files` 读工作区 CSV；Worker 超时可 `terminate()` 重启。`pybot_reply` 跑内置 pybot（Hugging Face / Apache-2.0，非产品能力）。**默认关闭**，设置开启后重启挂载；首次加载约 25s，后台会暂停，暂无输出文件桥。详见 `docs/PYTHON.md` |
 | **图片** | 相册选择与系统分享输入；全屏查看后可保存到相册 |
 | **回合回撤** | 长按消息可回撤到该轮之前，**并还原该轮写入的文件** |
 | **会话分支** | 从任意消息 fork 出新会话，原会话完整保留 |
 | **项目隔离** | 每个项目独立工作区，可绑定外部目录 |
+| **端侧个人本体** | SQLite 存身份/过敏/语言/沟通偏好等事实（23 个受控谓词）；硬约束跨会话自动注入，其余按需查询；设置 →「它知道什么」可查看/删除/分享，支持导出 bundle 与跨设备合并 |
+| **上下文面板** | 输入框小环打开原生面板：窗口占用、系统/工具/消息组成、前缀缓存命中、最近 12 轮；`context-ledger` 只记计数，force-stop 后仍在 |
 | **外观** | 明暗三档（跟随系统/浅色/深色，启动期生效）、对话字号四档、六套强调色 |
 | **命令与引用** | 输入 `/` 调本地命令，输入 `@` 引用工作区文件 |
 | **密钥热更新** | 设置页保存 API Key 后约 2 秒生效，无需重启 |
@@ -202,14 +209,14 @@ bash scripts/deploy.sh
 
 解包载荷约 60–90 秒 → 启动内嵌 Node → 连接本地桥 → 进入聊天界面。之后冷启约 3 秒。
 
-**首次使用有两步必做设置：**
+**首次启动会问一次「用哪个对话协议」，之后不再问：**
 
 1. **填入 DeepSeek API Key**（设置页，保存后约 2 秒生效，无需重启）
-2. **切换对话协议到 ACP**（设置 → 对话协议 → ACP → 保存 → **彻底退出并重开应用**）
+2. **协议选 ACP**（首启引导里选，或在 设置 → 对话协议 里切换后**彻底退出并重开应用**）
 
-第 2 步容易漏。默认走 `sdk` profile，此时**纯 JS 搜索、密钥热更新、时间上下文都不会挂载**——
-表现为「搜索不好用」或「改了 key 不生效」。切到 ACP 后 profile 落到 `ohos`，这些插件才到位。
-协议在启动期读取，`node::Start` 每进程一次，所以**必须重启应用**才生效。
+推荐 ACP：它才有**纯 JS 搜索、密钥热更新、时间上下文、审批面板**这些插件能力。选 SDK 也能聊，
+但上述插件不挂载——表现为「搜索不好用」或「改了 key 不生效」。协议在启动期读取，`node::Start`
+每进程一次，所以**切换后必须重启应用**。
 
 > **只装一个**：桥固定占用 `127.0.0.1:4517`，且为单客户端。如果设备上还留着旧包名
 > （如旧名 `com.qtepp.taharness`）并正在运行，新包会因 `EADDRINUSE` 启动失败并报
@@ -228,15 +235,19 @@ bash scripts/deploy.sh
 | 文件系统禁 hardlink | `copyFile(COPYFILE_EXCL)` 降级 |
 | 零受限 ACL 安装 | 默认 `--jitless` |
 
-### 关于运行 Python / Java
+### 关于运行 Python / Java / 其他语言
 
-**当前不支持**，这是平台限制而非实现缺失：
+- **Python：实验支持。** 不依赖设备安装解释器：Pyodide（CPython 3.13 + numpy/pandas）跑在
+  **隐藏 WebView 的 Worker** 里，Node 侧经文件桥调用，ArkTS 用 127.0.0.1 只读 HTTP 提供资产。
+  默认关闭（设置 →「Python 运行时（实验）」→ 重启），原因：首次加载约 25s、后台会冻结、
+  暂无输出文件桥。详见 [docs/PYTHON.md](docs/PYTHON.md)。
+- **Java：不支持。** 设备上没有 JVM，也无法 `exec` 任意二进制；Java 运行时只能整体搬进进程，
+  属于另一个量级的工程。
+- **`run_code`（JavaScript）**：`tools.mode: native` 下不暴露；PTC 运行时（`ptc-runtime-vm`）
+  仍挂载，未来可通过 preset 的 `tool-presentation` opt-in。
 
-- 设备上不存在 `python3` / `java` 解释器
-- 鸿蒙只能创建 **ArkTS 子进程**，无法 `exec` 任意二进制
-- `run_code` 工具仅执行 **JavaScript**（`node:vm` 沙箱，无 `require`/`process`）
-
-唯一可行路径是把 CPython 交叉编译成 arm64-v8a 的 `.so` 打进 HAP（类比本项目内嵌 Node 的做法），工作量大且生态受限。
+**为什么 Python 走 WebView 而 Node 走 jitless**：Node 侧无 JIT ⇒ 无 WASM；WebView 自带 JIT 与
+WASM，所以 Pyodide 放在那里的 Worker 里既有性能又能被 `terminate()` 掉。
 
 ## 项目结构
 
@@ -249,11 +260,23 @@ entry/src/main/ets/
 └── pages/         # 页面入口
 
 host/
-├── bootstrap.cjs      # 桥接 stdio ↔ socket
+├── bootstrap.cjs      # 桥接 stdio ↔ socket（含种子平台说明、profile 安装）
 ├── fetch-shim.cjs     # jitless 环境的纯 JS fetch
 ├── sharp-stub.cjs     # 图片直通（设备无 sharp 原生模块）
 ├── patches/           # 平台补丁（禁用调用即失败的工具）
-└── profile-ohos/      # 自定义 dsh profile（纯 JS 搜索、PTC 运行时等）
+└── profile-ohos/
+    └── profiles/ohos/node_modules/@ohos/
+        ├── dsh-bundle-ohos           # 平台 bundle：patch 行 + 插件依赖声明
+        ├── dsh-tool-fs-search-js     # 纯 JS glob/grep（替代 rg）
+        ├── dsh-tool-git              # 纯 JS git（isomorphic-git）
+        ├── dsh-tool-html             # A2UI 组件库 + 导出用的单文件页面
+        ├── dsh-tool-office           # docx/xlsx 生成与读取（纯 JS ZIP+OOXML）
+        ├── dsh-tool-python           # Pyodide 运行时（实验）
+        ├── dsh-tool-ontology         # 端侧个人本体（node:sqlite）
+        ├── dsh-tool-user-profile     # 旧画像工具（已 disabled，保留兼容）
+        ├── dsh-ptc-runtime-vm        # 进程内 PTC 运行时
+        ├── dsh-credentials-live      # 密钥热更新
+        └── dsh-boot-report           # 启动自检（写 bridge.log）
 
 docs/                  # 架构、构建、协议、差距分析
 scripts/               # 载荷装配、一键部署
@@ -270,18 +293,31 @@ scripts/               # 载荷装配、一键部署
 | [BUILD.md](docs/BUILD.md) | 构建、签名、装机、排障 |
 | [GAP-ANALYSIS.md](docs/GAP-ANALYSIS.md) | 与桌面版的能力差距及根因 |
 | [SPIKE-ACP.md](docs/SPIKE-ACP.md) | ACP 协议实测记录 |
+| [POSITIONING.md](docs/POSITIONING.md) | **对外口径唯一来源**：一句话/三句话/英文、能这么说与别这么说、能力状态表（已验证/实验/未验证/不支持） |
+| [OFFICE.md](docs/OFFICE.md) | 端侧 Office：纯 JS ZIP+OOXML、`office_*` 工具、原生预览的解析与上限 |
+| [PYTHON.md](docs/PYTHON.md) | 端侧 Python（实验）：Pyodide-in-WebView、Worker 隔离、文件桥、后台冻结与开关 |
+| [ONTOLOGY.md](docs/ONTOLOGY.md) | 端侧个人本体：SQLite schema、受控谓词、pinned 注入、面板与跨设备同步 |
+| [HTML-COMPONENTS.md](docs/HTML-COMPONENTS.md) | HTML 组件库：28 个组件 + 令牌/修饰符清单与片段 |
+| [LOCAL-GATE.md](docs/LOCAL-GATE.md) | 本机窄意图 gate：精确规则、语气词收尾、诊断记录 |
+| [CONTEXT-LEDGER.md](docs/CONTEXT-LEDGER.md) | 上下文账本与原生面板：记录格式与验收 |
+| [PROJECT-SYNC.md](docs/PROJECT-SYNC.md) | 项目同步：文件/会话/本体 bundle，TCP 与星闪两条传输 |
+| [DEMO-E2E.md](docs/DEMO-E2E.md) | 三条端到端手工验收脚本 |
 | [NEEDS-ANALYSIS.md](docs/NEEDS-ANALYSIS.md) | 手机形态能力清单与需求评分 |
 | [ROADMAP.md](docs/ROADMAP.md) | 路线图 |
 | [DSH-GO-PARITY.md](docs/DSH-GO-PARITY.md) | 与 dsh-go 的能力对齐矩阵与协议边界 |
 
 ## 已知边界
 
-诚实清单：
+诚实清单（完整状态表见 [docs/POSITIONING.md](docs/POSITIONING.md) §5）：
 
 - **无 token 级流式** —— 按块而非按 token 渲染
-- **无二进制工具面** —— 没有 `rg` / `bash`；`git` 由纯 JS 插件 `@ohos/dsh-tool-git` 替代（`clone` / `snapshot` / `pull` / `log` / `diff` / `status`，落到 `repos/<slug>`）
+- **无二进制工具面** —— 没有 `rg` / `bash` / `python3`；`git` 由纯 JS 插件替代（`repos/<slug>`），Python 走 Pyodide
 - **设备端不做图片降采样** —— 原尺寸上传，由服务端投影到视觉网格
-- **`run_code` 仅支持 JavaScript**，且当前默认未启用
+- **鸿蒙 PC（2in1）未真机验收** —— `deviceTypes` 已声明 2in1，手机/平板验过；窗口缩放、键鼠、安装渠道待验（[docs/ROADMAP.md](docs/ROADMAP.md) §6）
+- **Codex CLI 不能直接跑** —— 它是 Rust 二进制；能承载的是 Node 生态的 agent 运行时（dsh 已验证，Claude Code 这类 CLI 未验证）
+- **本体无静态加密** —— 只有应用沙箱 + 0600 文件；OWL 只导出、不做 DL 推理
+- **同步来的会话没有本机运行时** —— 「（导入）」会话只含本地缓存消息；发消息会新开本机会话继续，之前顶栏的模型/推理控件在该会话里不可用
+- **Python 是实验** —— 后台会冻结、无输出文件桥、默认关闭；pybot 冷启约 25s，不作为产品能力
 - **外部目录授权重启后需重新绑定**
 - **发布证书签名的 HAP 不能 `hdc` 直装** —— 平台限制（`not trusted app source`），
   发布包只能经 AGC 分发；真机装机走调试签名（`scripts/deploy.sh`）
