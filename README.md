@@ -21,15 +21,17 @@
 
 ## 这是什么
 
-> **鸿蒙不是 agent 的孤岛。**
+> **鸿蒙不是 Personal Agent 的孤岛。**
 
-**HarmonyGo 把完整的 dsh agent 运行时（Node v24.2.0 + 676 个依赖）装进 HarmonyOS 应用进程** —— 手机、平板、2in1 不连电脑就能跑 agent；记忆（端侧本体）、文档（Office / HTML 产物）、设备间同步（WiFi / 星闪）也都在设备本地完成，不经过云端会话。
+**HarmonyGo 把完整的 dsh agent 运行时（Node v24.2.0 + 676 个依赖）装进 HarmonyOS 应用进程** —— 手机、平板、2in1 不连电脑就能跑 agent；记忆（端侧本体）、文档（Office / HTML 产物）、**代码（纯 JS git）**、**计算（实验性 Python + 内置 pybot）**、设备间同步（WiFi / 星闪）也都在设备本地完成，不经过云端会话。
+
+仓库：[GitHub](https://github.com/QtePP/harmony-go) · [AtomGit](https://atomgit.com/qtepp/harmony-go)
 
 三件事说清楚它：
 
 - **运行时**：同进程内嵌 Node 与 dsh，用纯 JS 垫片绕开鸿蒙「禁 fork/exec、`--jitless` 无 WASM」的宿主限制 —— 让鸿蒙第一次能原生承载现代 agent 运行时（模型 API 仍联网）。
 - **记忆**：端侧 SQLite 个人本体，身份 / 过敏 / 偏好等**硬约束**跨会话自动带上，其余按需查询；可面板查看删除、可导出 bundle、可跨设备合并。
-- **协作面**：项目文件、会话缓存、本体 bundle 可经 **WiFi 或星闪** 在两台设备间同步；产物是原生 HTML / Office 文件，可导出长图 / PDF 再分享。
+- **协作面与工具**：项目文件、会话缓存、本体 bundle 可经 **WiFi 或星闪** 在两台设备间同步；产物是原生 HTML / Office 文件，可导出长图 / PDF 再分享；另有**纯 JS git**（clone / commit / push）与**实验性 Python**（Pyodide + 内置 pybot）。
 
 内核一句话：**把桌面级 agent 运行时挤进手机沙箱**——不是套壳浏览器，也不是远程调用；因此不用带电脑、不用 Office 订阅、不用把上下文搬到云端。
 
@@ -51,9 +53,9 @@
 <details>
 <summary>English</summary>
 
-> **HarmonyOS is not an island for agents.**
+> **HarmonyOS is not an island for Personal Agents.**
 
-**HarmonyGo embeds a full dsh agent runtime — Node v24.2.0 and its dependency tree — inside a HarmonyOS app process**, so phones, tablets and 2in1 devices run an agent on-device without tethering. Memory (an on-device SQLite ontology), documents (native Office and HTML artifacts), and device-to-device sync (Wi-Fi / NearLink) all happen locally rather than through a cloud session.
+**HarmonyGo embeds a full dsh agent runtime — Node v24.2.0 and its dependency tree — inside a HarmonyOS app process**, so phones, tablets and 2in1 devices run an agent on-device without tethering. Memory (an on-device SQLite ontology), documents (native Office and HTML artifacts), code (pure-JS git), compute (experimental Python and the bundled pybot), and device-to-device sync (Wi-Fi / NearLink) all happen locally rather than through a cloud session.
 
 This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`):
 
@@ -344,7 +346,7 @@ devecocli build                            # 构建通过
 
 ### 同步到两个代码托管
 
-仓库同时发布在 GitHub 与 [AtomGit](https://atomgit.com/qq_446289021111111111111118aq/harmony-go)。
+仓库同时发布在 GitHub 与 [AtomGit](https://atomgit.com/qtepp/harmony-go)。
 一条命令把当前分支推到两边（AtomGit 的 token 只从环境变量读，不落盘）：
 
 ```bash

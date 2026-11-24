@@ -5,11 +5,14 @@
 
 ## 1. 一句话
 
-> **鸿蒙不是 agent 的孤岛。**
+> **鸿蒙不是 Personal Agent 的孤岛。**
 
 **HarmonyGo 把完整的 dsh agent 运行时（Node v24.2.0 + 676 个依赖）装进 HarmonyOS 应用进程**
 —— 手机、平板、2in1 不连电脑就能跑 agent；记忆（端侧本体）、文档（Office / HTML 产物）、
-设备间同步（WiFi / 星闪）也都在设备本地完成，不经过云端会话。
+代码（纯 JS git）、计算（实验性 Python + 内置 pybot）、设备间同步（WiFi / 星闪）也都在设备
+本地完成，不经过云端会话。
+
+仓库：[GitHub](https://github.com/QtePP/harmony-go) · [AtomGit](https://atomgit.com/qtepp/harmony-go)
 
 ## 2. 三句话（对外介绍）
 
@@ -17,8 +20,9 @@
    —— **让鸿蒙第一次能原生承载现代 agent 运行时**（模型 API 仍联网）。
 2. **记忆**：端侧 SQLite 个人本体，身份 / 过敏 / 偏好等「硬约束」跨会话自动带上，其余按需查询；
    可面板查看删除、可导出 bundle、可跨设备合并。
-3. **协作面**：项目文件、会话缓存、本体 bundle 可经 **WiFi 或星闪** 在两台设备间同步；产物是
-   原生 HTML / Office 文件，可导出长图 / PDF 再分享。
+3. **协作面与工具**：项目文件、会话缓存、本体 bundle 可经 **WiFi 或星闪** 在两台设备间同步；
+   产物是原生 HTML / Office 文件，可导出长图 / PDF 再分享；另有纯 JS `git`（无 git 二进制）
+   与实验性 Python（Pyodide + 内置 pybot）。
 
 ## 3. 内核与价值（DNA → FAB）
 
@@ -53,13 +57,15 @@
 
 ## 7. English
 
-> **HarmonyOS is not an island for agents.**
+> **HarmonyOS is not an island for Personal Agents.**
 >
 > HarmonyGo embeds a full dsh agent runtime — Node v24.2.0 and its dependency tree — inside a
 > HarmonyOS app process, so phones, tablets and 2in1 devices run an agent on-device without
 > tethering. Memory (an on-device SQLite ontology), documents (native Office and HTML artifacts),
-> and device-to-device sync (Wi-Fi / NearLink) all happen locally rather than through a cloud
-> session.
+> code (pure-JS git), compute (experimental Python and the bundled pybot), and device-to-device
+> sync (Wi-Fi / NearLink) all happen locally rather than through a cloud session.
+>
+> Repositories: [GitHub](https://github.com/QtePP/harmony-go) · [AtomGit](https://atomgit.com/qtepp/harmony-go)
 
 ## 8. 能力状态（对外承诺前先看这张表）
 
