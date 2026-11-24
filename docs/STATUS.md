@@ -7,6 +7,18 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 >
+- **本体时间模型 v2：valid_from / valid_to / recorded_at / superseded_at + effective_at（2026-11-24 08:14–08:38，平板 MLR-AL00）**。
+  结论先行：**状态现在有“现实生效时间”和“系统写入时间”两层**，不只是写入顺序。schema 直接重建
+  （用户明确不用保留旧数据）：`fact` 加 `valid_from/valid_to/recorded_at/superseded_at`；
+  `remember/correct` 新增 `effective_at`；单值谓词按 `valid_from` 比较——新的取代旧值并关闭旧区间，
+  较早的写为历史（`valid_to = 当前 valid_from`、`superseded_by = 当前事实`），当前值不变。
+  同步先比 `valid_from`，同 `valid_from` 再比 `recorded_at`；删除用 `retired_at`，删除后重新添加以新 `valid_from` 为准。
+  真机：平板让模型显式调用两次 `ontology remember`，`effective_at` 分别为 2020-01-01（上海）和
+  2024-01-01（北京）；工具返回第二次 `superseded 1 older value`，面板显示 **1 条事实：北京，2024-01-01 生效**，
+  历史里上海 2020 仍在；随后删除北京，面板 **0 条有效 / 1 条最近删除**。单测 **29/29**。
+  **部署插曲**：第一次装时间模型构建时，`Payload.ets` 的 `fs.rmdirSync(payload)` 在旧载荷树上崩溃
+  （`remove_all_impl` 递归过深），与 schema 无关；清掉 `files/payload` + `payload.stamp` 后重装即恢复。
+  旧库被 schema v2 重建，之前测试的删除历史已清空（本次用户同意不保留）。
 - **tombstone 删除同步：删除随 bundle 传播，新写入赢过旧删除（2026-11-24 06:54–07:05，手机 CMM-AL10 / 平板 MLR-AL00）**。
   bundle v1 增加可选 `tombstones`（软删事实的稳定身份 + `retired_at`）；导出端把
   `retired_at IS NOT NULL AND superseded_by IS NULL` 的事实带上；接收端先合并活事实，再处理 tombstone：

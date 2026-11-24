@@ -33,16 +33,31 @@ ArkTS 设置面板 ──读──> <DSH_HOME>/ontology/snapshot.json
 ```sql
 entity(id, kind, name, aliases, created_at, merged_into)
 fact(id, subject, predicate, object, object_kind, qualifier,
-     confidence, source, observed_at, superseded_by, retired_at, pinned)
+     confidence, source, observed_at,
+     valid_from, valid_to, recorded_at,
+     superseded_by, superseded_at, retired_at, pinned)
 meta(key, value)
 ```
 
 - `entity` 与 `fact` 分开：两个“小李”不会合成一行；`relation` 的 object 指向实体。
 - **不覆盖事实**：单值谓词用 `superseded_by` 指向新事实；用户删除写 `retired_at`。
   历史还在，`search(history:true)` 能查“以前是什么”。
+- **时间字段**：`observed_at`（何时得知）、`valid_from`/`valid_to`（现实世界生效区间）、
+  `recorded_at`（系统写入时间）、`superseded_at`（旧值被取代的系统时间）、`retired_at`（删除）。
+  当前值 = `superseded_by IS NULL AND retired_at IS NULL`；单值谓词同一时刻最多一条 live。
 - `pinned` 由谓词决定，不由模型心情决定：过敏、饮食、语言、时区、称呼、沟通偏好永远注入。
 - 受控词表在 `lib/vocab.js`（代码，不是表）。未知谓词直接报错并给出合法列表，防止 `favoriteColor`
   之类的垃圾谓词把图变成垃圾场。
+
+### 2.1 时间与冲突
+
+- **本机**：`remember` 带 `effective_at`（缺省 now）→ 新 `valid_from`。
+  - 新 `valid_from` ≥ 当前 `valid_from`：新值成为 live，旧值 `valid_to = 新 valid_from`、`superseded_at = 写入时间`。
+  - 新 `valid_from` < 当前 `valid_from`：作为**历史**写入，`valid_to = 当前 valid_from`、`superseded_by = 当前事实`；当前值不变。
+- **同步**：先比 `valid_from`，再比 `recorded_at`；新者取代旧者，旧者写入历史；相等时本地保留。
+- **删除**：`retired_at`；接收端本地 `valid_from > retired_at`（删除后重新添加）则保留，否则 retire。
+- **`observed_at` 与 `valid_from` 分离**：用户说“我去年搬到上海”可以 `effective_at=去年`，而 `observed_at/recorded_at` 仍是今天。
+- **schema v2 是硬断点**：`openStore` 发现旧 `fact` 没有 `valid_from` 时直接丢掉 `fact/entity/meta` 重建；不保留旧数据（本次用户明确同意）。`meta.version` 归零。
 
 | 谓词 | 值类型 | 基数 | pinned | 说明 |
 |---|---|---|---|---|
@@ -68,13 +83,13 @@ meta(key, value)
 
 | 动作 | 作用 | 关键行为 |
 |---|---|---|
-| `remember` | 记一条事实 | 重复 = no-op；单值谓词自动取代旧值；未知谓词报错 |
-| `correct` | 改一条事实 | 用 `fact_id` 指向旧值，新值取代它；历史保留 |
+| `remember` | 记一条事实 | 重复 = no-op；单值谓词按 `effective_at` 决定取代还是写历史；未知谓词报错 |
+| `correct` | 改一条事实 | 用 `fact_id` 指向旧值，`effective_at` 默认为 now；旧值 `valid_to/superseded_at` 被关闭，历史保留 |
 | `forget` | 删一条/一批 | 默认软删；`fact_id`、`query`、`subject`、`predicate` 四选一；没有选择器时拒绝清库 |
 | `search` | 查 | `history:true` 能查被取代/删除的旧值 |
 | `list` | 概览 | pinned + 最近 10 条 + 计数 |
 | `export` | 导出 | `markdown` / `json` / `turtle` 写到 `<dsh-home>/ontology/export.*`；`bundle` + `to_workspace:true` 写 `workspace/ontology/` 供项目同步 |
-| `import` | 合并 bundle | `path` 指向 app files 目录内的 `ontology-bundle-*.json`；按 name/alias 对齐、只合并活事实、单值新者胜；面板「导入最新同步包」走同一逻辑 |
+| `import` | 合并 bundle | `path` 指向 app files 目录内的 `ontology-bundle-*.json`；按 name/alias 对齐、只合并活事实、单值按 `valid_from` 新者胜；较早的 incoming 存为历史；面板「导入最新同步包」走同一逻辑 |
 | `migrate_profile` | 迁移旧画像 | 默认 dry-run；`apply:true` 读 `<dsh-home>/AGENTS.md` 受管块，备份后逐条映射（姓名/过敏/饮食/语言/城市/关系→受控谓词，其余→带日期的 `note`），清空受管块；任一条失败则不清块；旧日期不会覆盖本体里更新的值 |
 
 工具描述里明确：不用它记一次性对话、不记密码/密钥/身份证号；该用 `correct` 的时候不要新增一条
@@ -130,7 +145,8 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
   { format: "harmonygo-ontology-bundle", version: 1,
     entities: [{id, kind, name, aliases}],
     facts: [{subject, subject_name, predicate, object, object_id, object_name,
-             object_kind, qualifier, confidence, source, observed_at}],
+             object_kind, qualifier, confidence, source, observed_at,
+             valid_from, valid_to, recorded_at}],
     tombstones: [{subject_name, predicate, object, object_name, object_kind,
                   qualifier, retired_at}] }
 ```
@@ -150,9 +166,9 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
 
 - 实体按 **name/alias** 对齐，incoming id 只作提示；alias 合并；未知谓词跳过。
 - 只合并**活事实**；`(subject, predicate, object, qualifier)` 相同则跳过。
-- 单值谓词比较 `observed_at`，**新的赢**（旧值 supersede）；多值谓词追加。
+- 单值谓词比较 `valid_from`（缺失回落 `observed_at`），**新的赢**（旧值 `valid_to`/`superseded_at` 关闭并进历史）；多值谓词追加。
 - **删除传播（tombstone）**：bundle 带软删事实的 `retired_at`；导入时先合并活事实，再处理 tombstone：
-  本地同身份的事实若 `observed_at <= retired_at`，按 tombstone 的时间 retire；若 `observed_at > retired_at`
+  本地同身份的事实若 `valid_from <= retired_at`，按 tombstone 的时间 retire；若 `valid_from > retired_at`
   （删除后重新添加），保留新的。被 `correct` 取代的旧值不是删除，不发 tombstone。
 - 旧 bundle（没有 `tombstones` 字段）仍可导入；新 bundle 旧接收端会忽略该字段。
 - 导入幂等：重复导入只增加 `skipped`；删除传播计入 `retracted`。

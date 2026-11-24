@@ -21,6 +21,12 @@ interface OntologyFact {
   confidence: number
   source: string
   observed_at: string
+  valid_from: string
+  valid_to: string | null
+  recorded_at: string
+  superseded_by: string | null
+  superseded_at: string | null
+  retired_at: string | null
   pinned: boolean
 }
 
@@ -364,7 +370,7 @@ export struct OntologyPanel {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
 
-        Text(`${fact.qualifier.length > 0 ? `${fact.qualifier} · ` : ''}${fact.observed_at.slice(0, 10)} · ${this.sourceLabel(fact.source)}`)
+        Text(`${fact.qualifier.length > 0 ? `${fact.qualifier} · ` : ''}${(fact.valid_from ?? fact.observed_at).slice(0, 10)} 生效 · ${this.sourceLabel(fact.source)}`)
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .maxLines(1)

@@ -17,6 +17,14 @@
   `build-release.sh` 已改成 glob 取，不再写死。
 
 ### 新增
+### 新增
+
+- **本体时间模型 v2（2026-11-24 真机）**：`fact` 增加 `valid_from` / `valid_to` / `recorded_at` /
+  `superseded_at`，`remember` / `correct` 支持 `effective_at`（现实生效时间，缺省为当前时间）；
+  单值谓词按 `valid_from` 比较——新的取代旧值并关闭旧区间，较早的写为历史不覆盖当前值；
+  同步先比 `valid_from`、同级再比 `recorded_at`；schema 升到 v2，旧库重建（旧数据不保留，用户确认）；
+  设置面板显示「生效时间」。单测 29/29，平板真机验成（2020 上海 vs 2024 北京 → 北京生效、上海留历史）。
+
 
 - **项目主题预设 / 数据驱动图表 / 亮暗双导出（2026-11-23 真机）**。`html` 工具新增 `preset` 动作
   （`.dsh-html/presets.json` 存默认主题与命名预设，`create` 自动继承，`check` 报主题漂移）与 `chart` 动作
