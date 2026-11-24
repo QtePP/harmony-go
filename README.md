@@ -141,7 +141,8 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 | **代码仓库** | 纯 JS `git` 工具：`clone` / `snapshot` / `pull` / `log` / `diff` / `status` / `commit` / `push`，落盘 `repos/<slug>`（推送需在设置页填 token） |
 | **项目同步** | 项目文件 + 会话缓存 + 本体 bundle，经 **WiFi（局域网 TCP）或星闪（NearLink）** 在两台设备间传输；6 位配对码，不覆盖已有文件 |
 | **本机快捷回复** | 问候 / 自我介绍 / 感谢 / 告别 / 时间日期 / 四则运算 / 能力帮助由本机精确规则直接回复，不调用云端模型，不产生 token；任务型消息不拦截；诊断页记录高频未命中，供人工提升为规则 |
-| **Python（实验）** | 内嵌 Pyodide（CPython 3.13 + numpy/pandas）跑在隐藏 WebView 的 Worker 里：`python_run` 可跑 pandas groupby、经 `files` 读工作区 CSV；Worker 超时可 `terminate()` 重启。`pybot_reply` 跑内置 pybot（Hugging Face / Apache-2.0，非产品能力）。**默认关闭**，设置开启后重启挂载；首次加载约 25s，后台会暂停，暂无输出文件桥。详见 `docs/PYTHON.md` |
+| **Python（实验）** | 内嵌 Pyodide（CPython 3.13 + numpy/pandas）跑在隐藏 WebView 的 Worker 里：`python_run` 可跑 pandas groupby、经 `files` 读工作区 CSV；Worker 超时可 `terminate()` 重启。**默认关闭**，设置开启后重启挂载；首次加载约 25s，后台会暂停，暂无输出文件桥。详见 `docs/PYTHON.md` |
+| **pybot（实验，非产品能力）** | 随 Python 运行时附带的内置小模型（Hugging Face [`huggingface/pybot`](https://github.com/huggingface/pybot)，Apache-2.0，非 DeepSeek 官方）：`pybot_reply` 在本机完成一次短回复，同一 `thread` 内多轮共享记忆、`reset: true` 清空；冷启约 25s、热回复 0.8–4.0s、加载后整进程 RSS ≈648MB。用于验证「端侧小模型回复」这条链路，不作为产品承诺：模型资产随包分发、推理不调用云端；注意 Python 运行时本身尚无 CSP / 禁网隔离（见边界） |
 | **图片** | 相册选择与系统分享输入；全屏查看后可保存到相册 |
 | **回合回撤** | 长按消息可回撤到该轮之前，**并还原该轮写入的文件** |
 | **会话分支** | 从任意消息 fork 出新会话，原会话完整保留 |
