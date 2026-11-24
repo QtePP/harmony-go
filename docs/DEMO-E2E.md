@@ -4,14 +4,14 @@
 > 本文不替用户执行。Python 默认关闭，先按 §1 开。
 >
 > 设备快照（2026-11-24）：手机 CMM-AL10 上 Python 已开，`boot-report` 为
-> `tools(34)`（含 `python_run` / `pybot_reply`）；不需要再重启。
+> `tools(33)`（含 `python_run` / `pybot_reply`）；不需要再重启。
 
 ## 1. 开 Python（项目一必需）
 
 设置 →「Python 运行时（实验）」→ 打开 → **彻底退出并重启 App**。
 
-- 关闭时：`tools(32)`，不挂隐藏 WebView；
-- 开启后：`tools(34)`，出现 `python_run` / `pybot_reply`。
+- 关闭时：`tools(31)`，不挂隐藏 WebView；
+- 开启后：`tools(33)`，出现 `python_run` / `pybot_reply`。
 
 不开也能发项目一，但模型只能“普通推理”算数，**没有 pandas 的真算力**；
 它应当明确说“没有用 Python 真算”，而不是假装跑过。

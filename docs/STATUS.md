@@ -7,6 +7,35 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 >
+- **tombstone 删除同步：删除随 bundle 传播，新写入赢过旧删除（2026-11-24 06:54–07:05，手机 CMM-AL10 / 平板 MLR-AL00）**。
+  bundle v1 增加可选 `tombstones`（软删事实的稳定身份 + `retired_at`）；导出端把
+  `retired_at IS NOT NULL AND superseded_by IS NULL` 的事实带上；接收端先合并活事实，再处理 tombstone：
+  本地同身份事实若 `observed_at <= retired_at` 按 tombstone 时间 retire，若更新（删除后重新添加）则保留。
+  单测 **26/26**：删除传播、旧 tombstone 不删新事实、删除后重加保留、迁移不覆盖更新值。
+  真机：平板 0 条有效 / 2 条已删除时「导出到工作区」仍可用，生成 1.1KB bundle；通过项目同步（WiFi + `hdc fport`）
+  送一份 live+tombstone 测试包，导入后仍 **0 条有效**，且「花生」的删除时间从 03:54 更新为 tombstone 的
+  **2026-11-24 09:00** —— 证明导入/retire 生效（若 tombstone 被忽略，会留下 1 条 live）。
+  **完整双机 NearLink 回环：尝试未完成（2026-11-24 07:41–07:56）**。平板建了 `allergy=腰果` 并导出 bundle；
+  平板→手机 NearLink 发送两次（手机接收端 826465 / 167862），发送端 sheet 都回到互联页、手机仍停在
+  「等待星闪对端连接」，未收到文件；原因未定位（广告超时 / UI 状态，非 tombstone 逻辑）。测试用的
+  live 腰果已删除，两端回到 0 条有效。tombstone 的导出/导入/retire 已由 WiFi 项目同步和 25/25 单测证明；
+  NearLink 传输层之前已用 1.3KB bundle 验过，完整删除回环仍需一次成功的「接收端保持广告 + 发送端 60s 内配对」。
+- **旧 user_profile 停用 + 迁移器：本体成为唯一写入点（2026-11-24 06:40–06:46，手机 CMM-AL10 / 平板 MLR-AL00）**。
+  决定：**停用旧 `user_profile`**（patch 行 `disabled: true`），模型不再写 AGENTS.md 的第二份画像；
+  历史受管块用 `ontology action=migrate_profile` 迁移。boot-report 从 `tools(34/32)` 降到
+  **`tools(33/31)`**，两端工具表都不再有 `user_profile`，`ontology` 仍在。
+  迁移器：默认 dry-run；`apply:true` 读 `<dsh-home>/AGENTS.md` 受管块，逐条映射（姓名/过敏/饮食/语言/城市/关系→受控谓词，
+  其余→带日期的 `note`），先写 `AGENTS.md.bak-*`，任一条失败就不清块；用 3 条合成块验证
+  `name=林舟`、`allergy=花生`、`note=喜欢简洁的回答`，导入 3 条、清块、prose 保留；审查发现旧画像日期可能覆盖本体里更新的值，已加 `preserveNewer`（迁移时比较 `observed_at`，旧值跳过）并补单测；ontology 单测 **26/26**。
+  真机：两端 `AGENTS.md` 的受管块本来都是 **0 条**（1455B 全是用户 prose），所以这次没有历史数据可迁；
+  迁移器保留给旧设备/历史块。**未做**：tombstone 删除同步（下一步）。
+- **面板「最近删除」：把软删事实还给用户看（2026-11-24 06:20–06:29，手机 CMM-AL10 / 平板 MLR-AL00）**。
+  结论先行：**聊天里的「已记住」是当时的回执，删除后不会回头改写；面板现在能证明这条事实曾经写入、什么时候被删**。
+  `snapshot.json` 增加 `deleted`（最近 10 条软删，按 subject/predicate/object/qualifier 去重，取最新 `retired_at`），
+  面板底部显示「最近删除 · N 条」，默认收起，展开是灰色卡片 +「已删除」徽章 + **本地时间**，并注明「已删除的事实不再注入模型」。
+  真机：手机 0 条有效 / **5 条已删除**（测试重复写入去重后），平板 0 条有效 / **2 条已删除**；两端展开都能看到
+  「姓名 林舟」「过敏 花生」和本地删除时间（手机 2026-11-24 04:01，平板 03:54）。单测 19/19（新增 deletedFacts 去重/排除 superseded）。
+  **边界**：只读历史，不提供恢复/彻底清除；硬删（`hard:true`）的事实不会出现在这里；`deleted` 只取最近 10 条。
 - **本体跨设备同步：星闪把 1.3KB bundle 从手机送到平板，导入后新会话记得（2026-11-24 03:33–03:59，手机 CMM-AL10 ↔ 平板 MLR-AL00）**。
   结论先行：**同步的不是 SQLite 文件，是可合并的 bundle**。手机面板「导出到工作区」写
   `workspace/ontology/ontology-bundle-<时间戳>.json`（2 条事实 1.3KB）→ 项目同步只勾

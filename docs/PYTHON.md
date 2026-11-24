@@ -108,7 +108,7 @@ dsh Node 进程                            ArkTS / ArkWeb
   但没有 CSP/禁网；桥只允许工作区内文件，仍应把 Python 视为执行模型生成的代码。
 - **5MB base64 未压测**：文件桥上限按 15MB 设计，实际只验了小 CSV；大文件要测 `runJavaScript` 字符串上限与内存。
 - **默认关闭，已做成实验开关**：平台 patch 不 insert `tool-python-ohos`；Settings「Python 运行时（实验）」
-  写入 `user.patch.yml` 的 `- insert:`，重启后 `tools(34)` 并挂载 `PythonHost`；关闭时 `tools(32)`，
+  写入 `user.patch.yml` 的 `- insert:`，重启后 `tools(33)` 并挂载 `PythonHost`；关闭时 `tools(31)`，
   不创建隐藏 WebView、不起 loopback server。真机已验证开/关两态。
 
 ## 6. 产品化前的 go/no-go 清单

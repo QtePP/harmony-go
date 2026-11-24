@@ -24,6 +24,15 @@ interface OntologyFact {
   pinned: boolean
 }
 
+interface DeletedFact {
+  id: string
+  subject: string
+  predicate: string
+  object: string
+  qualifier: string
+  retired_at: string
+}
+
 interface OntologyCounts {
   facts: number
   entities: number
@@ -42,6 +51,7 @@ interface OntologySnapshot {
   counts: OntologyCounts
   pinned: OntologyFact[]
   facts: OntologyFact[]
+  deleted?: DeletedFact[]
   truncated: boolean
   lastCommand: OntologyCommandResult | null
 }
@@ -62,6 +72,8 @@ export struct OntologyPanel {
   @StorageLink('accent') accent: string = '#4D6BFE'
 
   @State snapshot: OntologySnapshot | null = null
+  @State deleted: DeletedFact[] = []
+  @State showDeleted: boolean = false
   @State query: string = ''
   @State note: string = ''
   @State loading: boolean = true
@@ -87,8 +99,10 @@ export struct OntologyPanel {
       }
       const text = fs.readTextSync(path)
       this.snapshot = JSON.parse(text) as OntologySnapshot
+      this.deleted = this.snapshot.deleted ?? []
     } catch (error) {
       this.snapshot = null
+      this.deleted = []
       this.error = `读取失败：${String(error)}`
     } finally {
       this.loading = false
@@ -124,6 +138,15 @@ export struct OntologyPanel {
 
   private hasFacts(): boolean {
     return this.snapshot !== null && this.snapshot.counts.facts > 0
+  }
+
+  private deletedLabel(fact: DeletedFact): string {
+    const at = new Date(fact.retired_at)
+    if (Number.isNaN(at.getTime())) {
+      return `${fact.retired_at} 删除`
+    }
+    const pad = (value: number): string => value < 10 ? `0${value}` : `${value}`
+    return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())} 删除`
   }
 
   private countsLabel(): string {
@@ -368,9 +391,50 @@ export struct OntologyPanel {
   }
 
   @Builder
+  private deletedCard(fact: DeletedFact) {
+    Column({ space: 4 }) {
+      Row({ space: 6 }) {
+        Text(this.predicateLabel(fact.predicate))
+          .fontSize(11)
+          .fontColor($r('app.color.text_tertiary'))
+        Text('已删除')
+          .fontSize(9)
+          .fontColor($r('app.color.text_tertiary'))
+          .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+          .border({ width: 1, color: $r('app.color.text_tertiary') })
+          .borderRadius(6)
+        Text(fact.subject)
+          .fontSize(11)
+          .fontColor($r('app.color.text_tertiary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+      }
+      .width('100%')
+
+      Text(fact.object)
+        .fontSize(14)
+        .fontColor($r('app.color.text_secondary'))
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .width('100%')
+
+      Text(this.deletedLabel(fact))
+        .fontSize(10)
+        .fontColor($r('app.color.text_tertiary'))
+        .width('100%')
+    }
+    .width('100%')
+    .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(12)
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
   private emptyState() {
     Column({ space: 10 }) {
-      Text('还没有记忆')
+      Text(this.deleted.length > 0 ? '还没有有效记忆' : '还没有记忆')
         .fontSize(17)
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.text_primary'))
@@ -478,8 +542,45 @@ export struct OntologyPanel {
           .padding({ top: 10 })
       }
 
+      if (this.deleted.length > 0) {
+        Row({ space: 6 }) {
+          Text(`最近删除 · ${this.deleted.length} 条`)
+            .fontSize(12)
+            .fontColor($r('app.color.text_secondary'))
+          Blank()
+          Text(this.showDeleted ? '收起' : '展开')
+            .fontSize(12)
+            .fontColor(this.accent)
+        }
+        .width('100%')
+        .height(36)
+        .onClick(() => {
+          this.showDeleted = !this.showDeleted
+        })
+
+        if (this.showDeleted) {
+          Text('已删除的事实不再注入模型；聊天里的「已记住」是当时的回执，不会随删除改写。')
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+            .lineHeight(14)
+            .width('100%')
+            .padding({ bottom: 6 })
+
+          List({ space: 6 }) {
+            ForEach(this.deleted, (fact: DeletedFact) => {
+              ListItem() {
+                this.deletedCard(fact)
+              }
+            }, (fact: DeletedFact) => fact.id)
+          }
+          .width('100%')
+          .height(230)
+          .edgeEffect(EdgeEffect.Spring)
+        }
+      }
+
       Row({ space: 16 }) {
-        if (this.hasFacts()) {
+        if (this.hasFacts() || this.deleted.length > 0) {
           Text('导出到工作区')
             .fontSize(12)
             .fontColor(this.accent)

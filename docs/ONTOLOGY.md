@@ -64,7 +64,7 @@ meta(key, value)
 
 ## 3. 工具
 
-`ontology` 一个工具、七个动作：
+`ontology` 一个工具、八个动作：
 
 | 动作 | 作用 | 关键行为 |
 |---|---|---|
@@ -75,9 +75,10 @@ meta(key, value)
 | `list` | 概览 | pinned + 最近 10 条 + 计数 |
 | `export` | 导出 | `markdown` / `json` / `turtle` 写到 `<dsh-home>/ontology/export.*`；`bundle` + `to_workspace:true` 写 `workspace/ontology/` 供项目同步 |
 | `import` | 合并 bundle | `path` 指向 app files 目录内的 `ontology-bundle-*.json`；按 name/alias 对齐、只合并活事实、单值新者胜；面板「导入最新同步包」走同一逻辑 |
+| `migrate_profile` | 迁移旧画像 | 默认 dry-run；`apply:true` 读 `<dsh-home>/AGENTS.md` 受管块，备份后逐条映射（姓名/过敏/饮食/语言/城市/关系→受控谓词，其余→带日期的 `note`），清空受管块；任一条失败则不清块；旧日期不会覆盖本体里更新的值 |
 
 工具描述里明确：不用它记一次性对话、不记密码/密钥/身份证号；该用 `correct` 的时候不要新增一条
-矛盾值。`ontology` 与旧的 `user_profile` 并存，前者是结构化主路径，后者保留给旧 AGENTS.md 区块。
+矛盾值。旧的 `user_profile` 已于 2026-11-24 停用；历史受管块用 `migrate_profile` 迁入本体，`AGENTS.md` 里用户自己写的 prose 保留。
 
 ## 4. 注入（硬约束怎么进模型）
 
@@ -107,9 +108,19 @@ system section 负责“什么时候做”。
 - **删除**：二次确认后写命令文件；插件下一 tick 软删并重写快照；面板 1.8s 后重读。
 - **分享**：把 `summary.md` 交给系统分享面板（ShareKit）；实测 420B 的 Markdown 能打开分享。
 - **状态**：空态、读取失败（Node 未就绪/插件未加载）、截断提示都明确写出来。
-- **权限**：快照/摘要/命令文件都以 0600 写入（真机验证 hdc 已读不到 snapshot，说明 mode 生效）。
+- **最近删除**：底部「最近删除 · N 条」可展开；列出最近 10 条软删事实（按 subject/predicate/object/qualifier 去重，取最新 `retired_at`），显示本地时间。已删除的事实不再注入；聊天里的「已记住」是当时的回执，不会随删除改写。
 
-## 5.1 跨设备同步（星闪 / 项目同步）
+## 5.1 最近删除（面板底部）
+
+`snapshot.json` 除了 `facts`/`pinned` 还写 `deleted`（最多 10 条）：`{id, subject, predicate, object, qualifier, retired_at}`。
+来源是 `fact.retired_at IS NOT NULL AND superseded_by IS NULL`，按谓词/值/角色去重，取每个组合最近一次删除时间。
+面板默认收起，只显示「最近删除 · N 条」；展开后是灰色卡片，带「已删除」徽章与本地时间，不提供恢复（恢复是显式重记）。
+
+这条通道解决的是「聊天里说已记住、面板却是 0」的错觉：删除不会改写历史消息，但面板现在能证明这条事实曾经写入、
+什么时候被删。真机（2026-11-24 06:27，手机 CMM-AL10）显示 0 条有效 / 5 条已删除（测试重复写入去重后），
+平板 0 条有效 / 2 条已删除；两边展开都能看到「姓名 林舟」「过敏 花生」和本地删除时间。
+
+## 5.2 跨设备同步（星闪 / 项目同步）
 
 不传 `ontology.db`。DB 在本进程里开着（WAL + `-shm`），覆盖会坏库；而且整文件替换不能合并
 接收端自己的事实。同步的单位是**可合并的 bundle**：
@@ -119,7 +130,9 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
   { format: "harmonygo-ontology-bundle", version: 1,
     entities: [{id, kind, name, aliases}],
     facts: [{subject, subject_name, predicate, object, object_id, object_name,
-             object_kind, qualifier, confidence, source, observed_at}] }
+             object_kind, qualifier, confidence, source, observed_at}],
+    tombstones: [{subject_name, predicate, object, object_name, object_kind,
+                  qualifier, retired_at}] }
 ```
 
 流程（两端都装本应用）：
@@ -138,9 +151,11 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
 - 实体按 **name/alias** 对齐，incoming id 只作提示；alias 合并；未知谓词跳过。
 - 只合并**活事实**；`(subject, predicate, object, qualifier)` 相同则跳过。
 - 单值谓词比较 `observed_at`，**新的赢**（旧值 supersede）；多值谓词追加。
-- **删除不传播**：bundle 不含 `retired_at`/`superseded_by`，一端删掉的事实不会在另一端消失；
-  tombstone 同步是 bundle v2 的事。
-- 导入幂等：重复导入只增加 `skipped`。
+- **删除传播（tombstone）**：bundle 带软删事实的 `retired_at`；导入时先合并活事实，再处理 tombstone：
+  本地同身份的事实若 `observed_at <= retired_at`，按 tombstone 的时间 retire；若 `observed_at > retired_at`
+  （删除后重新添加），保留新的。被 `correct` 取代的旧值不是删除，不发 tombstone。
+- 旧 bundle（没有 `tombstones` 字段）仍可导入；新 bundle 旧接收端会忽略该字段。
+- 导入幂等：重复导入只增加 `skipped`；删除传播计入 `retracted`。
 
 真机（2026-11-24 03:33–03:59，手机 CMM-AL10 ↔ 平板 MLR-AL00）：
 
@@ -165,7 +180,7 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
 
 | 步骤 | 结果 |
 |---|---|
-| 启动插件 | `[ontology] ready version=0 facts=0 entities=1 pinned=0`；boot-report `tools(34)` 含 `ontology`（Python 开启） |
+| 启动插件 | `[ontology] ready version=0 facts=0 entities=1 pinned=0`；boot-report `tools(33)` 含 `ontology`（Python 开启） |
 | 模型写入 | 一句“Remember: 我叫林舟、对花生过敏、不吃辣” → 模型调用 `ontology`，3 条事实，`version=3`，全部 pinned |
 | 新会话注入 | 新建会话问“我叫什么？对什么过敏？不要调用工具” → 直接答“林舟 / 花生”，没有调用任何工具 |
 | 面板 | 3 条事实、1 个实体、3 条硬约束；卡片显示中文谓词、硬约束徽章、日期、来源 |
@@ -183,7 +198,7 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
   `relationalStore`，代价是 Node 侧要过桥。
 - **OWL 只做导出**：OWL 2 DL 需要 Java 或 WASM reasoner（这台设备都没有）；`export turtle` 是给互换/备份
   用的，不是端侧推理。个人事实的封闭世界 + 时间 + 来源本来就更适合关系表。
-- **与 `user_profile` 并存**：旧的 AGENTS.md 受管区块还在，模型仍可写；两者没有自动迁移。
+- **旧 `user_profile` 已停用**（受管块仍在文件里时，用 `migrate_profile` 迁移；模型不再写第二份）。
   下一步要么把旧块导入本体，要么把 `user_profile` 降级为兼容层。
 - **没有多设备合并**：当前只导出/分享；项目同步（TCP/星闪）没有接本体。
 - **规模未压测**：面板/快照上限 400 条，`export` 最多 2000 条；10k+ 行未测。
@@ -202,7 +217,7 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
 - `.../lib/vocab.js` — 受控词表
 - `.../lib/store.js` — SQLite schema、实体消歧、supersede/retire、search
 - `.../lib/render.js` — pinned 块、Markdown、Turtle、快照
-- `.../test/*.test.mjs` — 17 个单测（含 bundle 合并/幂等/删除不传播）
+- `.../test/*.test.mjs` — 26 个单测（含 bundle 合并/幂等/删除传播、最近删除去重、旧画像解析/映射、preserveNewer）
 - `entry/src/main/ets/view/OntologyPanel.ets` — 原生面板
 - `entry/src/main/ets/view/SettingsSheet.ets` — 入口
 - bundle：`@ohos/dsh-bundle-ohos` 的 `cordis.patch.yml` + `package.json`
@@ -224,9 +239,9 @@ hdc shell tail -n 20 /data/app/el2/100/base/com.qtepp.harmonygo/haps/entry/files
 
 ## 9. 下一步
 
-- 平板（双栏）验收；面板在 ≥840vp 的宽度与字号。
-- 旧 `user_profile` 区块迁移进本体（按日期 → `note`），然后决定是否去掉旧工具。
+- 平板双栏的面板/同步/导入/删除传播已验；剩余 ≥840vp 的字号复测。
+- 旧 `user_profile` 的迁移器已做；后续可删掉旧插件代码/测试。
 - 敏感谓词写入前确认（过敏/关系/财务）——把“事后删”变成“事前同意”。
 - 10k 行压测与索引检查；`search` 的 FTS5 可选。
-- 多设备同步：本体是 `<dsh-home>` 级，和项目同步不是同一条路径，要单独设计合并策略。
+- tombstone 已随 bundle 传播；完整的双机 NearLink「手机删→平板跟着删」回环还没跑（传输层未变）。
 - 若要跨工具/跨应用交换，再补 `export turtle` 的 SHACL 校验；仍不做 DL 推理。
