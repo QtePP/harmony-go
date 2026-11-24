@@ -21,6 +21,8 @@
 
 ## 这是什么
 
+> **鸿蒙不是 agent 的孤岛。**
+
 **HarmonyGo 把完整的 dsh agent 运行时（Node v24.2.0 + 676 个依赖）装进 HarmonyOS 应用进程** —— 手机、平板、2in1 都能不连电脑直接跑 agent，并带端侧个人本体、Office/Python、产物导出与星闪/WiFi 同步。
 
 三件事说清楚它：
@@ -44,6 +46,8 @@
 
 <details>
 <summary>English</summary>
+
+> **HarmonyOS is not an island for agents.**
 
 **HarmonyGo embeds a full dsh agent runtime — Node v24.2.0 and its dependency tree — inside a HarmonyOS app process**, so phones, tablets and 2in1 devices run an agent on-device without tethering. It adds an on-device personal ontology (SQLite), Office/Python tooling, HTML artifact export, and device-to-device sync over Wi-Fi or NearLink.
 

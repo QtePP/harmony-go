@@ -5,6 +5,8 @@
 
 ## 1. 一句话
 
+> **鸿蒙不是 agent 的孤岛。**（对外副标题，README 首段使用）
+
 **HarmonyGo 把完整的 dsh agent 运行时（Node v24.2.0 + 676 个依赖）装进 HarmonyOS 应用进程**
 —— 手机、平板、2in1 都能不连电脑直接跑 agent，并带端侧个人本体、Office/Python、产物导出与
 星闪/WiFi 同步。
