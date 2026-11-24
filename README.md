@@ -25,7 +25,7 @@
 
 **HarmonyGo 把完整的 dsh agent 运行时（Node v24.2.0 + 676 个依赖）装进 HarmonyOS 应用进程** —— 手机、平板、2in1 不连电脑就能跑 agent；记忆（端侧本体）、文档（Office / HTML 产物）、**代码（纯 JS git）**、**计算（实验性 Python + 内置 pybot）**、设备间同步（WiFi / 星闪）也都在设备本地完成，不经过云端会话。
 
-仓库：[GitHub](https://github.com/QtePP/harmony-go) · [AtomGit](https://atomgit.com/qtepp/harmony-go)
+仓库：[GitHub](https://github.com/QtePP/harmony-go) · [AtomGit](https://atomgit.com/qtepp/harmony-go) · 落地页：[qtepp.github.io/harmony-go](https://qtepp.github.io/harmony-go/)
 
 三件事说清楚它：
 

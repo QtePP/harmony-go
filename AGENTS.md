@@ -11,6 +11,7 @@
 （产品名/应用显示名 **HarmonyGo**，包名 `com.qtepp.harmonygo`；旧名 TA Harness / `com.qtepp.taharness` 仅出现在历史记录里。）
 
 - 仓库：<https://github.com/QtePP/harmony-go>（MIT；2026-11-23 由 `deepseek-harness-harmony` 改名，GitHub 旧地址会重定向）
+- 镜像与站点：<https://atomgit.com/qtepp/harmony-go>（同步推送：`scripts/push-all.sh`）；落地页 <https://qtepp.github.io/harmony-go/>（GitHub Pages，从 `main` 的 `/docs` 发布；入口 `docs/index.html`）
 - 形态：原生 ArkUI 客户端 + **同一应用进程内**的 dsh 运行时；不套壳浏览器、不投屏、不连电脑。
 - 覆盖形态：`deviceTypes` = phone / tablet / **2in1**（鸿蒙电脑），840vp 布局断点切换单/双栏。
 - 目标平台：API 26 / HarmonyOS 7.0.0，arm64-v8a，minAPI 26（装不上 HarmonyOS 6.x）。

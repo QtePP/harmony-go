@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HarmonyGo — 鸿蒙不是 Personal Agent 的孤岛</title>
+<meta name="description" content="HarmonyGo 把完整的 dsh agent 运行时（Node v24.2.0 + 676 个依赖）装进 HarmonyOS 应用进程：手机、平板、2in1 不连电脑就能跑 agent，并带端侧本体、Office/Python、产物导出与 WiFi/星闪 同步。">
+<meta property="og:title" content="HarmonyGo — 鸿蒙不是 Personal Agent 的孤岛">
+<meta property="og:description" content="在 HarmonyOS 设备本地运行完整 agent 运行时：同进程 Node + dsh，端侧本体、Office/Python、HTML 导出、设备间同步。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="images/screens/01-chat.jpg">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f7f5;
+    --surface: #ffffff;
+    --surface-2: #efeee9;
+    --text: #1b1b19;
+    --muted: #6b6b66;
+    --line: #e2e0da;
+    --accent: #4d6bfe;
+    --brand: #111111;
+    --radius: 16px;
+    --max: 1040px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14140f;
+      --surface: #1d1d17;
+      --surface-2: #26261f;
+      --text: #f2f1ea;
+      --muted: #a3a29a;
+      --line: #33332b;
+      --brand: #f2f1ea;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "HarmonyOS Sans SC", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+    line-height: 1.75;
+    font-size: 16px;
+    overflow-wrap: break-word;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+
+  header.site {
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    position: sticky; top: 0; z-index: 5;
+    backdrop-filter: blur(8px);
+  }
+  .bar { display: flex; align-items: center; gap: 14px; height: 60px; }
+  .mark { width: 26px; height: 26px; display: block; color: var(--brand); }
+  .brandname { font-weight: 700; letter-spacing: -.01em; }
+  .spacer { flex: 1; }
+  .nav { display: flex; gap: 16px; font-size: 14px; }
+  .nav a { color: var(--muted); }
+  .nav a:hover { color: var(--text); }
+
+  .hero { padding: 64px 0 40px; }
+  .eyebrow {
+    display: inline-block; font-size: 12.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 2px 12px; margin-bottom: 18px;
+  }
+  h1 {
+    font-size: clamp(30px, 5.2vw, 52px);
+    line-height: 1.15; letter-spacing: -.02em;
+    margin: 0 0 18px; max-width: 20em;
+  }
+  .lede { font-size: clamp(16px, 2.2vw, 19px); color: var(--muted); max-width: 44em; margin: 0 0 26px; }
+  .lede strong { color: var(--text); }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn {
+    display: inline-block; padding: 10px 20px; border-radius: 999px;
+    border: 1px solid var(--line); font-size: 15px; font-weight: 600;
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { text-decoration: none; filter: brightness(1.06); }
+  .btn.ghost { color: var(--text); background: var(--surface); }
+  .meta { font-size: 13px; color: var(--muted); margin-top: 16px; }
+  .meta code { font-family: ui-monospace, "SF Mono", monospace; font-size: 12.5px; }
+
+  section { padding: 44px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(21px, 3vw, 26px); margin: 0 0 8px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 26px; font-size: 15px; }
+
+  .cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 22px 22px 20px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .num {
+    display: inline-flex; width: 28px; height: 28px; border-radius: 8px;
+    align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent); font-size: 13px; font-weight: 700; margin-bottom: 12px;
+  }
+
+  .shots { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 720px) { .shots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 480px) { .shots { grid-template-columns: minmax(0, 1fr); } }
+  figure { margin: 0; }
+  figure img {
+    width: 100%; display: block; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--surface-2);
+  }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; }
+
+  .status { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .status .card h3 { font-size: 15px; }
+  .status ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+  .status li { margin: 4px 0; }
+  .tag { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; margin-left: 6px; }
+  .tag.ok { background: color-mix(in srgb, #2f9e6f 16%, transparent); color: #2f9e6f; }
+  .tag.exp { background: color-mix(in srgb, #d9822b 16%, transparent); color: #d9822b; }
+  .tag.no { background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--muted); }
+
+  .docs { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .doc {
+    display: block; padding: 18px 20px; border-radius: 14px;
+    background: var(--surface); border: 1px solid var(--line);
+  }
+  .doc b { display: block; margin-bottom: 4px; }
+  .doc span { color: var(--muted); font-size: 13.5px; }
+
+  footer.site { border-top: 1px solid var(--line); padding: 34px 0 56px; color: var(--muted); font-size: 13.5px; }
+  footer.site a { color: var(--text); }
+  @media (max-width: 560px) {
+    .nav { display: none; }
+    .hero { padding: 40px 0 28px; }
+  }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="wrap bar">
+    <svg class="mark" viewBox="0 0 24 24" role="img" aria-label="HarmonyGo 标记">
+      <path fill="currentColor" d="M4.3 3.2 H20.8 L19.7 5.8 H3.2 Z"/>
+      <path fill="currentColor" d="M12.5 5.5 L9.2 13.2 L12 13.2 L9.8 20.5 L15.8 11.8 L12.6 11.8 L14.2 5.5 Z"/>
+    </svg>
+    <span class="brandname">HarmonyGo</span>
+    <span class="spacer"></span>
+    <nav class="nav">
+      <a href="on-device-architecture.html">架构</a>
+      <a href="breakthroughs.html">突破</a>
+      <a href="https://github.com/QtePP/harmony-go">GitHub</a>
+      <a href="https://atomgit.com/qtepp/harmony-go">AtomGit</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <span class="eyebrow">HarmonyOS · dsh 外壳 · MIT</span>
+    <h1>鸿蒙不是 Personal Agent 的孤岛。</h1>
+    <p class="lede">
+      <strong>HarmonyGo 把完整的 dsh agent 运行时（Node v24.2.0 + 676 个依赖）装进 HarmonyOS 应用进程</strong>
+      —— 手机、平板、2in1 不连电脑就能跑 agent；记忆（端侧本体）、文档（Office / HTML 产物）、
+      代码（纯 JS git）、计算（实验性 Python + 内置 pybot）、设备间同步（WiFi / 星闪）
+      也都在设备本地完成，不经过云端会话。
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/QtePP/harmony-go">查看源码</a>
+      <a class="btn ghost" href="https://github.com/QtePP/harmony-go#readme">README</a>
+      <a class="btn ghost" href="on-device-architecture.html">架构走读</a>
+    </div>
+    <p class="meta">
+      <code>Node v24.2.0</code> · <code>dsh 0.2.2-rc.5</code> · <code>API 26</code> ·
+      不套壳浏览器 / 不投屏 / 不连电脑
+    </p>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <h2>三件事说清楚它</h2>
+      <p class="sub">运行时、记忆、协作面 —— 每一层都落到真机可验证的能力上。</p>
+      <div class="cards">
+        <div class="card">
+          <span class="num">01</span>
+          <h3>运行时：同进程内嵌 Node 与 dsh</h3>
+          <p>用纯 JS 垫片绕开鸿蒙「禁 fork/exec、<code>--jitless</code> 无 WASM」的宿主限制，
+             让设备第一次能原生承载现代 agent 运行时。模型 API 仍联网，agent 在设备本地运行。</p>
+        </div>
+        <div class="card">
+          <span class="num">02</span>
+          <h3>记忆：端侧 SQLite 个人本体</h3>
+          <p>身份、过敏、沟通偏好等「硬约束」跨会话自动注入，其余按需查询；
+             带现实生效时间（valid_from），可查看、删除、分享，可导出 bundle 并对端合并。</p>
+        </div>
+        <div class="card">
+          <span class="num">03</span>
+          <h3>协作面与工具</h3>
+          <p>项目文件、会话、本体 bundle 经 WiFi 或星闪在两台设备间同步；
+             产物是原生 HTML / Office 文件，可导出长图 / PDF 再分享；
+             另有纯 JS git（clone / commit / push）与实验性 Python（Pyodide + pybot）。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>真机长这样</h2>
+      <p class="sub">截图全部来自真机（手机 CMM-AL10），不是模拟器或设计稿。</p>
+      <div class="shots">
+        <figure>
+          <img src="images/screens/01-chat.jpg" alt="对话与消息操作">
+          <figcaption>对话与消息操作：引用 / 朗读 / 分享为图片 / 回撤</figcaption>
+        </figure>
+        <figure>
+          <img src="images/screens/02-tools.jpg" alt="工具轨迹与 git">
+          <figcaption>工具轨迹：手机上直接 clone 仓库、跑 git</figcaption>
+        </figure>
+        <figure>
+          <img src="images/screens/03-context.jpg" alt="上下文面板">
+          <figcaption>上下文面板：窗口占用、缓存命中、组成占比</figcaption>
+        </figure>
+        <figure>
+          <img src="images/screens/04-export.jpg" alt="导出菜单">
+          <figcaption>导出：亮暗双长图 / 整页长图 PNG / 单页 PDF</figcaption>
+        </figure>
+        <figure>
+          <img src="images/screens/06-sync.jpg" alt="项目同步">
+          <figcaption>项目同步：WiFi / 星闪，配对码，文件 + 会话</figcaption>
+        </figure>
+        <figure>
+          <img src="images/screens/07-ontology.jpg" alt="端侧个人本体">
+          <figcaption>端侧本体：它知道什么，可查看 / 删除 / 分享</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>诚实的状态</h2>
+      <p class="sub">对外承诺前先对照这张表；完整清单在仓库 <code>docs/POSITIONING.md</code>。</p>
+      <div class="status">
+        <div class="card">
+          <h3>已验证（真机）<span class="tag ok">verified</span></h3>
+          <ul>
+            <li>同进程 Node + dsh（ACP 9 方法）</li>
+            <li>HTML 产物导出：长图 / PDF / 亮暗双图 + 分享</li>
+            <li>Office docx/xlsx 生成与 App 内原生预览</li>
+            <li>端侧本体、跨设备 bundle 同步</li>
+            <li>项目同步：TCP 与星闪两条传输</li>
+            <li>纯 JS git：clone / commit / push</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>实验（非产品能力）<span class="tag exp">experimental</span></h3>
+          <ul>
+            <li>端侧 Python（Pyodide，默认关闭）</li>
+            <li>内置 pybot 小模型</li>
+            <li>本机窄意图 gate（问候/时间/算术）</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>边界与不做<span class="tag no">limits</span></h3>
+          <ul>
+            <li>鸿蒙 PC（2in1）已声明、待真机验收</li>
+            <li>Codex CLI 是 Rust 二进制，不能直接运行</li>
+            <li>无 fork/exec、无原生 .node、无 WASM（Node 侧）</li>
+            <li>本体无静态加密；OWL 只导出不推理</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>继续读</h2>
+      <p class="sub">仓库里的文档比落地页详细得多。</p>
+      <div class="docs">
+        <a class="doc" href="https://github.com/QtePP/harmony-go#readme">
+          <b>README</b><span>定位、功能表、构建与快速开始</span>
+        </a>
+        <a class="doc" href="on-device-architecture.html">
+          <b>设备端架构</b><span>进程剖面、双 profile、沙箱与平台约束</span>
+        </a>
+        <a class="doc" href="breakthroughs.html">
+          <b>六件平台级突破</b><span>每件突破的证据与代价</span>
+        </a>
+        <a class="doc" href="https://github.com/QtePP/harmony-go/blob/main/docs/POSITIONING.md">
+          <b>对外口径</b><span>一句话 / 三句话 / 能怎么说与别怎么说</span>
+        </a>
+        <a class="doc" href="https://github.com/QtePP/harmony-go/blob/main/docs/DEMO-E2E.md">
+          <b>三条端到端验收</b><span>语音、本体、Python、导出、git、同步</span>
+        </a>
+        <a class="doc" href="privacy.html">
+          <b>隐私政策</b><span>数据全部留在设备本地</span>
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <p>
+      MIT © 2026 QtePP ·
+      <a href="https://github.com/QtePP/harmony-go">GitHub</a> ·
+      <a href="https://atomgit.com/qtepp/harmony-go">AtomGit</a> ·
+      <a href="privacy.html">隐私政策</a>
+    </p>
+    <p>
+      dsh 的全部智能来自
+      <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a>；
+      本仓库只是宿主适配层与原生界面。
+    </p>
+  </div>
+</footer>
+</body>
+</html>
