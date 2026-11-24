@@ -74,9 +74,26 @@ jobs:
         run: |
           DSH_HOME=.build/ci-home node .build/payload/node_modules/@deepseek-ai/dsh/lib/bin.js \
             --profile ohos --patch .build/payload/patches/ohos.patch.yml --dump-config > /tmp/dump.txt
-          for row in boot-report-ohos credentials-live-ohos ptc-runtime-vm tool-fs-search-ohos time-context tool-git tool-office-ohos tool-python-ohos tool-user-profile context-ledger-ohos ontology; do
+          for row in boot-report-ohos credentials-live-ohos ptc-runtime-vm tool-fs-search-ohos time-context tool-git tool-office-ohos tool-user-profile context-ledger-ohos ontology; do
             grep -q "id: $row" /tmp/dump.txt || { echo "row missing: $row"; exit 1; }
           done
+          # Python is opt-in through the client's user.patch.yml. It must be
+          # absent from the platform default and compose when the user overlay
+          # asks for it; checking it in the default dump fails every run.
+          if grep -q "id: tool-python-ohos" /tmp/dump.txt; then
+            echo "tool-python-ohos must stay opt-in, but it is in the default dump"
+            exit 1
+          fi
+          cat > /tmp/python-user.patch.yml <<'YAML'
+          - insert:
+              - id: tool-python-ohos
+                name: "@ohos/dsh-tool-python"
+          YAML
+          DSH_HOME=.build/ci-home node .build/payload/node_modules/@deepseek-ai/dsh/lib/bin.js \
+            --profile ohos --patch .build/payload/patches/ohos.patch.yml \
+            --patch /tmp/python-user.patch.yml --dump-config > /tmp/dump-python.txt
+          grep -q "id: tool-python-ohos" /tmp/dump-python.txt \
+            || { echo "python opt-in row missing"; exit 1; }
           for row in tool-bash tool-jobs tool-fs-search ptc-runtime; do
             awk -v id="^- id: $row\$" '
               $0 ~ id { inside = 1; next }
@@ -85,4 +102,4 @@ jobs:
             ' /tmp/dump.txt | grep -q 'disabled: true' \
               || { echo "row not disabled: $row"; exit 1; }
           done
-          echo "profile composed"
+          echo "profile composed (default + python opt-in)"
