@@ -72,52 +72,75 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 
 ## 截图
 
-<p align="center">
-  <img src="docs/images/home.png" alt="首页" width="280">
-</p>
+> 全部来自真机（手机 CMM-AL10），不是模拟器或设计稿；页面为实际渲染结果。
 
 <table>
 <tr>
 <td width="33%">
 
-**多模态：看图、算营养、落盘**
+**对话与消息操作**（引用 / 朗读 / 分享 / 回撤）
 
-<img src="store-assets/screenshots/01-chat.png" alt="多模态对话" width="100%">
-
-</td>
-<td width="33%">
-
-**工具轨迹：每一步都摊开**
-
-<img src="store-assets/screenshots/02-trace.png" alt="工具轨迹" width="100%">
+<img src="docs/images/screens/01-chat.jpg" alt="对话与消息操作" width="100%">
 
 </td>
 <td width="33%">
 
-**产物就在你自己的目录里**
+**工具轨迹**：手机上直接 clone 仓库、跑 git
 
-<img src="store-assets/screenshots/03-files.png" alt="项目文件" width="100%">
+<img src="docs/images/screens/02-tools.jpg" alt="工具轨迹与 git" width="100%">
+
+</td>
+<td width="33%">
+
+**上下文面板**：窗口占用、缓存命中、组成占比
+
+<img src="docs/images/screens/03-context.jpg" alt="上下文面板" width="100%">
 
 </td>
 </tr>
 <tr>
 <td width="33%">
 
-**按项目分开的会话**
+**导出**：整页长图 / 单页 PDF / 亮暗双长图
 
-<img src="store-assets/screenshots/04-sessions.png" alt="会话与项目" width="100%">
-
-</td>
-<td width="33%">
-
-**密钥、模型、权限都归你管**
-
-<img src="store-assets/screenshots/05-settings.png" alt="设置" width="100%">
+<img src="docs/images/screens/04-export.jpg" alt="导出菜单" width="100%">
 
 </td>
 <td width="33%">
 
-*截图由 [scripts/make-store-shots.py](scripts/make-store-shots.py) 从真机截图合成*
+**HTML 产物**：暗色下的组件页面，可拉起分享
+
+<img src="docs/images/screens/05-html.jpg" alt="HTML 产物预览与分享" width="100%">
+
+</td>
+<td width="33%">
+
+**项目同步**：WiFi / 星闪，配对码，文件 + 会话
+
+<img src="docs/images/screens/06-sync.jpg" alt="项目同步" width="100%">
+
+</td>
+</tr>
+<tr>
+<td width="33%">
+
+**端侧本体**：它知道什么，可查看 / 删除 / 分享
+
+<img src="docs/images/screens/07-ontology.jpg" alt="端侧个人本体" width="100%">
+
+</td>
+<td width="33%">
+
+**端侧 Python（实验）**：`python_run` 跑 pandas
+
+<img src="docs/images/screens/08-python.jpg" alt="端侧 Python" width="100%">
+
+</td>
+<td width="33%">
+
+**设置**：密钥、GitHub Token、模型、能力开关
+
+<img src="docs/images/screens/09-settings.jpg" alt="设置" width="100%">
 
 </td>
 </tr>
