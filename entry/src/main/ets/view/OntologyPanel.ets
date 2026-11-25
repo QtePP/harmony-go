@@ -62,6 +62,7 @@ interface OntologySnapshot {
   pinned: OntologyFact[]
   facts: OntologyFact[]
   deleted?: DeletedFact[]
+  pending?: OntologyFact[]
   truncated: boolean
   lastCommand: OntologyCommandResult | null
 }
@@ -83,6 +84,7 @@ export struct OntologyPanel {
 
   @State snapshot: OntologySnapshot | null = null
   @State deleted: DeletedFact[] = []
+  @State pending: OntologyFact[] = []
   @State showDeleted: boolean = false
   @State query: string = ''
   @State note: string = ''
@@ -110,9 +112,11 @@ export struct OntologyPanel {
       const text = fs.readTextSync(path)
       this.snapshot = JSON.parse(text) as OntologySnapshot
       this.deleted = this.snapshot.deleted ?? []
+      this.pending = this.snapshot.pending ?? []
     } catch (error) {
       this.snapshot = null
       this.deleted = []
+      this.pending = []
       this.error = `读取失败：${String(error)}`
     } finally {
       this.loading = false
@@ -139,6 +143,9 @@ export struct OntologyPanel {
   }
 
   private footerLabel(): string {
+    if (this.pending.length > 0) {
+      return '待确认候选不会注入，也不会被模型搜到；接受后才生效。'
+    }
     const snapshot = this.snapshot
     if (snapshot !== null && snapshot.truncated) {
       return '列表只显示最近 400 条；完整内容用「分享」导出。只存在本机沙箱，被注入的片段会随请求发给模型。'
@@ -164,7 +171,8 @@ export struct OntologyPanel {
       return ''
     }
     const counts = this.snapshot.counts
-    return `${counts.facts} 条事实 · ${counts.entities} 个实体 · ${counts.pinned} 条硬约束`
+    const pending = this.pending.length > 0 ? ` · ${this.pending.length} 条待确认` : ''
+    return `${counts.facts} 条事实 · ${counts.entities} 个实体 · ${counts.pinned} 条硬约束${pending}`
   }
 
   private predicateLabel(predicate: string): string {
@@ -292,6 +300,20 @@ export struct OntologyPanel {
     }
   }
 
+  /** Accept one proposed candidate; the plugin moves it into live facts. */
+  private confirmPending(fact: OntologyFact): void {
+    this.writeOperation(JSON.stringify({ op: 'confirm', factId: fact.id }))
+    this.showNote('已接受；下一轮起它会进入本体。')
+    setTimeout(() => this.load(), 1800)
+  }
+
+  /** Drop one proposed candidate. It was never live, so there is no history. */
+  private rejectPending(fact: OntologyFact): void {
+    this.writeOperation(JSON.stringify({ op: 'reject', factId: fact.id }))
+    this.showNote('已忽略这条候选。')
+    setTimeout(() => this.load(), 1800)
+  }
+
   /** Export a bundle into the default workspace so project sync can carry it. */
   private exportToWorkspace(): void {
     this.writeOperation(JSON.stringify({ op: 'export-bundle' }))
@@ -361,6 +383,67 @@ export struct OntologyPanel {
     }
     .width('100%')
     .padding({ left: 2, right: 2, bottom: 12 })
+  }
+
+  @Builder
+  private pendingCard(fact: OntologyFact) {
+    Column({ space: 6 }) {
+      Row({ space: 6 }) {
+        Text('待确认')
+          .fontSize(9)
+          .fontColor(this.accent)
+          .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+          .border({ width: 1, color: this.accent })
+          .borderRadius(6)
+        Text(this.predicateLabel(fact.predicate))
+          .fontSize(11)
+          .fontColor($r('app.color.text_secondary'))
+        Text(fact.subject)
+          .fontSize(11)
+          .fontColor($r('app.color.text_tertiary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+      }
+      .width('100%')
+
+      Text(fact.object)
+        .fontSize(15)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .width('100%')
+
+      Row({ space: 8 }) {
+        Text(`${(fact.valid_from ?? fact.observed_at).slice(0, 10)} · ${this.sourceLabel(fact)}`)
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+        Button('忽略')
+          .fontSize(12)
+          .height(40)
+          .padding({ left: 12, right: 12 })
+          .backgroundColor($r('app.color.surface_muted'))
+          .fontColor($r('app.color.text_secondary'))
+          .onClick(() => this.rejectPending(fact))
+        Button('接受')
+          .fontSize(12)
+          .height(40)
+          .padding({ left: 12, right: 12 })
+          .backgroundColor(this.accent)
+          .fontColor(Color.White)
+          .onClick(() => this.confirmPending(fact))
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .padding({ left: 14, right: 14, top: 12, bottom: 12 })
+    .backgroundColor($r('app.color.surface'))
+    .borderRadius(14)
+    .alignItems(HorizontalAlign.Start)
   }
 
   @Builder
@@ -474,7 +557,7 @@ export struct OntologyPanel {
   @Builder
   private emptyState() {
     Column({ space: 10 }) {
-      Text(this.deleted.length > 0 ? '还没有有效记忆' : '还没有记忆')
+      Text(this.pending.length > 0 ? '先确认上面的候选' : this.deleted.length > 0 ? '还没有有效记忆' : '还没有记忆')
         .fontSize(17)
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.text_primary'))
@@ -508,6 +591,36 @@ export struct OntologyPanel {
           .backgroundColor($r('app.color.surface'))
           .borderRadius(10)
           .margin({ bottom: 8 })
+      }
+
+      if (!this.loading && this.error.length === 0 && this.pending.length > 0) {
+        Column({ space: 8 }) {
+          Row({ space: 6 }) {
+            Text(`待确认 · ${this.pending.length} 条`)
+              .fontSize(13)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_primary'))
+            Text('模型推断，尚未生效')
+              .fontSize(10)
+              .fontColor($r('app.color.text_tertiary'))
+            Blank()
+          }
+          .width('100%')
+
+          ForEach(this.pending.slice(0, 3), (fact: OntologyFact) => {
+            this.pendingCard(fact)
+          }, (fact: OntologyFact) => fact.id)
+
+          if (this.pending.length > 3) {
+            Text(`还有 ${this.pending.length - 3} 条；接受或忽略后继续显示。`)
+              .fontSize(10)
+              .fontColor($r('app.color.text_tertiary'))
+              .width('100%')
+              .padding({ top: 2 })
+          }
+        }
+        .width('100%')
+        .padding({ bottom: 12 })
       }
 
       if (this.loading) {

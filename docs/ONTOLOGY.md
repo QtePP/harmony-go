@@ -4,6 +4,8 @@
 > 用户能在「设置 → 它知道什么」里查看/删除/分享。v2 加了现实生效时间（`valid_from` / `recorded_at`）。
 > v3 借鉴 NVIDIA Auto Ontology 的语义层纪律：谓词目录（含义/同义词/例子）、`related` 图遍历、
 > `metric` 确定性计算、`source_kind`/`source_ref` 血缘、`search` 覆盖度、导入冲突报告。
+> v3.1 加候选通道：`propose` + 确定性自动抽取写 `status='proposed'`，面板「待确认」里接受/忽略；
+> 候选不进 live 视图、不注入、不被 `search` 返回。
 > 探针阶段的 WAL/force-stop 数据留在 `docs/STATUS.md` 同一天的前一条记录里。
 >
 > 一句话：**本体存在手机 SQLite 里；硬约束每次会话自动注入；其余事实由 `ontology` 工具按需查询；
@@ -54,7 +56,7 @@ v_entity_edge -- 实体值事实变成图边：from_id, predicate, to_id, qualif
 - **血缘字段**：`source_kind` = `user` / `model` / `migration` / `import` / `system`；
   `source_ref` = `session:<id>`、`bundle:<file>` 或 `AGENTS.md#user-profile`。
   `source` 保留为人类可读旧字段，新代码读 `source_kind`。
-- **状态字段**：`status` = `asserted` / `proposed`。`proposed` 只用于将来的自动抽取候选：
+- **状态字段**：`status` = `asserted` / `proposed`。`proposed` 用于自动抽取/显式 `propose` 候选：
   它不进 `v_live_fact`，因此不会被 `search` 返回、不会被 pinned 注入，也不会覆盖当前值；
   用户确认后才写 `asserted`。当前工具写入默认 `asserted`。
 - **`v_live_fact` 是唯一“当前”定义**：不再在十几处查询里重复 `superseded_by IS NULL AND retired_at IS NULL`。
@@ -100,11 +102,12 @@ v2 是硬断点（旧库没有 `valid_from` 就重建）。v3 不重建：`openS
 
 ## 3. 工具
 
-`ontology` 一个工具、十一个动作：
+`ontology` 一个工具、十二个动作：
 
 | 动作 | 作用 | 关键行为 |
 |---|---|---|
 | `remember` | 记一条事实 | 重复 = no-op；单值谓词按 `effective_at` 决定取代还是写历史；未知谓词报错并给最近邻 |
+| `propose` | 写候选 | 只用于模型推断、用户没直说的 durable 事实；写 `status='proposed'`，等面板确认，绝不直接生效 |
 | `correct` | 改一条事实 | 用 `fact_id` 指向旧值，`effective_at` 默认为 now；旧值 `valid_to/superseded_at` 被关闭，历史保留 |
 | `forget` | 删一条/一批 | 默认软删；`fact_id`、`query`、`subject`、`predicate` 四选一；没有选择器时拒绝清库 |
 | `search` | 查 | `history:true` 能查被取代/删除的旧值；查询会按谓词同义词扩展；返回 `coverage`（exact/partial/none） |
@@ -129,7 +132,20 @@ Postgres/pgvector 或 text-to-SQL agent：
 - **`metric`**：`age`、`days_until`、`days_since`、`count` 用代码算，返回 `rule` 版本和输入事实。
   模型只转述，不做日历算术。这是 Auto Ontology “Metric = 受审 SQL”在端侧的等价物。
 
-### 3.2 覆盖度与冲突
+### 3.2 候选与待确认队列
+
+- **写入通道**：`propose`（模型显式推断）和 `agent/turn-stopping` 的确定性抽取（`lib/auto-capture.js`）。
+  抽取只认一阶明确句式（“我叫…/我对…过敏/我住在…/我在做…项目，截止…”），不调模型、不花 token；
+  `DSH_ONTOLOGY_AUTOCAPTURE=0` 可整体关闭。
+- **不可见**：`status='proposed'` 不进 `v_live_fact`，所以不注入、不被 `search` 返回、不参与单值取代。
+- **确认**：面板「待确认」点「接受」→ `confirmProposed`；单值谓词按 `valid_from` 照常取代/写历史，
+  早于当前值的候选会作为历史保留（不会覆盖新值）。
+- **忽略**：硬删候选（它从未 live，没有历史要保留）。
+- **去重**：同一身份已有 live 事实或已有同身份候选时，`propose` 返回 duplicate，不重复排队；
+  用户直接 `remember` 同一事实会清掉对应候选。
+- **同步**：bundle 只导出 live 事实，候选不过设备；候选是本地待办，不随同步走。
+
+### 3.3 覆盖度与冲突
 
 - `search` 的 `coverage`：有结果 = `exact`；实体存在但这条事实没有 = `partial`；
   完全没记录 = `none`。`partial`/`none` 的 summary 明确写“没有记录 ≠ 事实为假”，
@@ -166,11 +182,13 @@ system section 负责“什么时候做”。
 
 - **列表**：每条显示谓词中文名、`硬约束` 徽章、主体、值、日期、来源（你告诉它的/它从对话里记的/
   从旧画像迁入/同步导入）。v3 起来源读 `source_kind`，并通过 `source_ref` 显示“来自该会话 /
-  来自同步包 / 来自旧画像”；`proposed` 会带“待确认”徽章（当前没有自动抽取，所以通常看不到）。
+  来自同步包 / 来自旧画像”；`proposed` 会带“待确认”徽章（自动抽取命中时出现在顶部队列）。
 - **搜索**：对主体/谓词/值/角色做本地过滤（快照最多 400 条）。
 - **删除**：二次确认后写命令文件；插件下一 tick 软删并重写快照；面板 1.8s 后重读。
 - **分享**：把 `summary.md` 交给系统分享面板（ShareKit）；实测 420B 的 Markdown 能打开分享。
 - **状态**：空态、读取失败（Node 未就绪/插件未加载）、截断提示都明确写出来。
+- **待确认**：快照 `pending` 最多 50 条；面板顶部显示「待确认 · N 条」，每张卡有「接受」「忽略」。
+  候选不注入、不被模型搜到；接受后才进入 live，忽略即硬删。
 - **最近删除**：底部「最近删除 · N 条」可展开；列出最近 10 条软删事实（按 subject/predicate/object/qualifier 去重，取最新 `retired_at`），显示本地时间。已删除的事实不再注入；聊天里的「已记住」是当时的回执，不会随删除改写。
 
 ## 5.1 最近删除（面板底部）
@@ -286,8 +304,9 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
 - `.../lib/vocab.js` — 受控词表（含义/同义词/例子/最近邻）
 - `.../lib/store.js` — SQLite schema、`v_live_fact`/`v_entity_edge`、实体消歧、supersede/retire、search、related、bundle 合并/冲突
 - `.../lib/metrics.js` — `age` / `days_until` / `days_since` / `count` 确定性计算
+- `.../lib/auto-capture.js` — 一阶明确句式的确定性候选抽取（不调模型）
 - `.../lib/render.js` — pinned 块、Markdown、Turtle、快照
-- `.../test/*.test.mjs` — 40 个单测（含语义目录、proposed 排除、血缘往返、related、导入冲突、metric、bundle 合并/幂等/删除传播、preserveNewer）
+- `.../test/*.test.mjs` — 50 个单测（含语义目录、proposed 排队/确认/忽略/去重、双 store 冲突、血缘往返、related、metric、bundle 合并/幂等/删除传播、preserveNewer）
 - `entry/src/main/ets/view/OntologyPanel.ets` — 原生面板
 - `entry/src/main/ets/view/SettingsSheet.ets` — 入口
 - bundle：`@ohos/dsh-bundle-ohos` 的 `cordis.patch.yml` + `package.json`
@@ -312,11 +331,16 @@ hdc shell tail -n 20 /data/app/el2/100/base/com.qtepp.harmonygo/haps/entry/files
 - **v3 语义层已真机验（2026-11-25，手机 CMM-AL10）**：`describe` 的中文同义词/例子、`related` 的
   “我妈对什么过敏 + 项目截止”、`metric days_until` 的 36 天、`search` 的 coverage=none、
   `source_kind`/`source_ref` 血缘、面板“你告诉它的 · 来自该会话”标签都已验；schema v3 原地迁移，
-  旧 3 条事实保留。**尚未真机**：`import conflicts`（本机单测 1 条）、`migrate_profile` 写
-  `source_kind='migration'`（旧库已迁移，未重跑迁移器）。
+  旧 3 条事实保留。
+- **v3.1 候选队列已真机验（2026-11-25，手机 CMM-AL10）**：发“我对芒果过敏。不要调用任何工具”
+  → 模型没写记忆，但 turn-stopping 自动写入 `allergy=芒果`（proposed，session 血缘）；
+  面板「待确认 · 1 条」显示卡片，接受后变 4 条 live / 3 条硬约束 / 0 待确认，随后用 `forget`
+  删回 3 条 live。本机 50 单测含 proposed 排队/确认/忽略/去重、双 store 冲突。
+  **尚未真机**：物理双机 import 冲突（当前只连了一台 CMM-AL10，双 store 往返已测）、
+  `migrate_profile` 写 `source_kind='migration'`（旧库已迁移，未重跑迁移器）。
 - 平板双栏的面板/同步/导入/删除传播已验；剩余 ≥840vp 的字号复测。
 - 旧 `user_profile` 的迁移器已做；后续可删掉旧插件代码/测试。
-- 敏感谓词写入前确认（过敏/关系/财务）——v3 已留 `status=proposed`，等自动抽取落地后接“待确认”队列。
+- 敏感谓词写入前确认（过敏/关系/财务）——v3.1 已接「自动抽取 → 待确认」队列；下一步做敏感谓词白名单/阈值。
 - 10k 行压测与索引检查；`search` 的 FTS5 可选。
 - tombstone 已随 bundle 传播；完整的双机 NearLink「手机删→平板跟着删」回环还没跑（传输层未变）。
 - 若要跨工具/跨应用交换，再补 `export turtle` 的 SHACL 校验；仍不做 DL 推理。
