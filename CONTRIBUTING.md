@@ -20,7 +20,7 @@
 | Node | 22+（仅装配载荷用） |
 
 ```bash
-node scripts/assemble-payload.mjs   # 首次需装配载荷（约 225MB）
+node scripts/assemble-payload.mjs   # 首次需装配载荷（约 240MB）
 bash scripts/deploy.sh              # 构建并安装到真机
 ```
 
@@ -38,9 +38,6 @@ devecocli check arkts <改动的 .ets 文件>
 
 # 2. 构建通过
 devecocli build
-
-# 3. 真机验证（涉及界面/协议时）
-devecocli run --device <serial> --skip-build
 
 # 3. 真机验证（涉及界面/协议时）
 devecocli run --device <serial> --skip-build
@@ -118,6 +115,27 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 5. 若涉及界面，附截图
 
 搜索已有 Issue 后再提，避免重复。
+
+## 开发者原创声明（DCO）
+
+每个 commit 必须带 `Signed-off-by`：
+
+```bash
+git commit -s -m "Open the trace panel in place"
+```
+
+这是 [Developer Certificate of Origin](https://developercertificate.org/)：你声明自己有权
+以本项目的 MIT 许可提交该改动。**不需要签 CLA**；不要用 `--no-signoff` 绕过。
+
+## 治理
+
+角色、决策、RFC 与发布节奏见 [GOVERNANCE.md](GOVERNANCE.md)。协议/插件契约/平台约束的
+改动必须先开 RFC；日常改动走 48 小时 lazy consensus。
+
+## 商标
+
+MIT 只授予代码，不授予 `HarmonyGo` 名称与 Logo。修改版分发前请换名换图标，详见
+[TRADEMARK.md](TRADEMARK.md)。
 
 ## 许可
 

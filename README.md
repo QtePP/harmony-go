@@ -358,6 +358,9 @@ scripts/               # 载荷装配、一键部署、双远端推送（push-al
 | [NEEDS-ANALYSIS.md](docs/NEEDS-ANALYSIS.md) | 手机形态能力清单与需求评分 |
 | [ROADMAP.md](docs/ROADMAP.md) | 路线图 |
 | [DSH-GO-PARITY.md](docs/DSH-GO-PARITY.md) | 与 dsh-go 的能力对齐矩阵与协议边界 |
+| [OPENBITFUN-COMPARISON.md](docs/OPENBITFUN-COMPARISON.md) | 与 OpenBitFun 的对比：主机遥控 vs 端侧运行时、鸿蒙端差异、他们接 dsh 的三条路径与可借鉴清单 |
+| [MOAT-PLAN.md](docs/MOAT-PLAN.md) | 护城河加深方案：记忆/多设备/产物三个主攻，Footprint/Trust/MCP 三个地基，24 周路线与真机验收 |
+| [OPEN-SOURCE-STRATEGY.md](docs/OPEN-SOURCE-STRATEGY.md) | 开源策略：许可证/边界/治理/生态/商业化/合规与 90 天路线 |
 
 ## 已知边界
 
@@ -414,5 +417,9 @@ bash scripts/push-all.sh --tags      # 连 tag 一起推
 ## 许可证
 
 [MIT](LICENSE) © 2026 QtePP
+
+- 贡献：[CONTRIBUTING.md](CONTRIBUTING.md) · 治理：[GOVERNANCE.md](GOVERNANCE.md)
+- 商标：[TRADEMARK.md](TRADEMARK.md) · 安全：[SECURITY.md](SECURITY.md)
+- 开源策略：[docs/OPEN-SOURCE-STRATEGY.md](docs/OPEN-SOURCE-STRATEGY.md)
 
 `dsh` 本体遵循其自身的开源许可，本项目仅提供宿主适配与界面层。

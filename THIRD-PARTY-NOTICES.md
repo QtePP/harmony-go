@@ -6,39 +6,44 @@
 
 | 组件 | 版本 | 许可证 | 用途 |
 |---|---|---|---|
-| [`@deepseek-ai/dsh`](https://github.com/deepseek-ai/deepseek-harness) | 0.2.1-rc.4 | MIT | AI 运行时本体（会话、工具、插件、模型适配） |
+| [`@deepseek-ai/dsh`](https://github.com/deepseek-ai/deepseek-harness) | 0.2.2-rc.5 | MIT | AI 运行时本体（会话、工具、插件、模型适配） |
 | [`@fellow99/node-bridge`](https://ohpm.openharmony.cn/) | 0.1.0 | 见上游 | NAPI 桥接，把 Node 拉进鸿蒙进程 |
 | [`@fellow99/node-runtime`](https://ohpm.openharmony.cn/) | 24.2.0 | 见上游 | `libnode.so`，Node v24.2.0 arm64 构建 |
 
 ## 载荷内含组件
 
-`dsh-payload.zip` 由 `scripts/assemble-payload.mjs` 装配，内含 `dsh` 及其依赖。实测 **552 个包**，全部声明了许可证：
+`dsh-payload.zip` 由 `scripts/assemble-payload.mjs` 装配，内含 `dsh` 及其依赖。`npm install` 实测 **676 个包**（含嵌套重复）；按 `name@version` 去重后 **642 个**，全部声明了许可证：
 
 | 许可证 | 包数 |
 |---|---|
-| MIT | 465 |
-| Apache-2.0 | 52 |
+| MIT | 547 |
+| Apache-2.0 | 55 |
 | BSD-3-Clause | 15 |
-| ISC | 10 |
-| MPL-2.0 | 2 |
+| ISC | 13 |
 | BSD-2-Clause | 2 |
-| Unlicense | 1 |
-| Python-2.0 | 1 |
+| MPL-2.0 | 1 |
 | LGPL-3.0-or-later | 1 |
 | Apache-2.0 AND LGPL-3.0-or-later AND MIT | 1 |
+| Python-2.0 | 1 |
+| Unlicense | 1 |
+| (MIT AND Zlib) | 1 |
+| BlueOak-1.0.0 | 1 |
+| (MIT AND BSD-3-Clause) | 1 |
+| 0BSD | 1 |
+| (MIT OR CC0-1.0) | 1 |
+| **合计** | **642** |
 
 ### 关于弱著佐权组件
 
-包内存在 4 个 **MPL-2.0 / LGPL-3.0** 组件，需注意：
+包内存在 3 个 **MPL-2.0 / LGPL-3.0** 组件，需注意：
 
 | 组件 | 许可证 | 设备端状态 |
 |---|---|---|
 | `@deepseek-ai/libreoffice-kit` | MPL-2.0 | 纯 JS 封装，未被本项目调用 |
-| `@deepseek-ai/libreoffice-kit-darwin-arm64` | MPL-2.0 | **darwin 二进制，鸿蒙无法加载** |
 | `@img/sharp-libvips-darwin-arm64` | LGPL-3.0-or-later | **darwin 二进制，鸿蒙无法加载** |
 | `@img/sharp-wasm32` | Apache-2.0 + LGPL-3.0 + MIT | **wasm32，jitless 下不可用** |
 
-其中 3 个是**平台专属二进制**，在 arm64-ohos 上永远不会被加载：
+其中 2 个是**平台专属二进制 / WASM**，在 arm64-ohos 上永远不会被加载：
 
 - `sharp` 在设备端由 `host/sharp-stub.cjs` 完全接管（`require` 被重定向）
 - `wasm` 在 `--jitless` 下不可用

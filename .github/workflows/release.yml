@@ -1,0 +1,63 @@
+name: release
+
+# Publishes the two artifacts that do not need DevEco: the pinned dsh payload
+# and its SBOM. The signed HAP still comes from scripts/build-release.sh on a
+# machine with the HarmonyOS SDK and release key; this workflow deliberately
+# does not pretend to build it.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish (e.g. v1.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  payload:
+    name: payload + SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify the tag exists
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          git fetch --tags --force
+          git rev-parse "refs/tags/${TAG}"
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Assemble the pinned payload
+        run: node scripts/assemble-payload.mjs
+
+      - name: Generate SBOM
+        run: node scripts/generate-sbom.mjs --out dist/sbom.cdx.json
+
+      - name: Checksums
+        run: |
+          mkdir -p dist
+          sha256sum entry/src/main/resources/rawfile/dsh-payload.zip > dist/SHA256SUMS
+          sha256sum dist/sbom.cdx.json >> dist/SHA256SUMS
+
+      - name: Publish assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release view "${TAG}" >/dev/null 2>&1 || gh release create "${TAG}" --generate-notes --title "${TAG}"
+          gh release upload "${TAG}" \
+            entry/src/main/resources/rawfile/dsh-payload.zip \
+            dist/sbom.cdx.json \
+            dist/SHA256SUMS \
+            --clobber
