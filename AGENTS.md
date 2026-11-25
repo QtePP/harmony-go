@@ -204,6 +204,7 @@ ACP 实测契约（勿凭直觉改）：
 | 运行时 | 同进程 Node **v24.2.0** + dsh **0.2.2-rc.5** + `ohos` profile：**十一个自研插件**（含 `html`、`office`、`python` 与 `ontology`），boot-report 实测 `tools(33)`（Python 开启时；关闭时 31） |
 | 双 profile | SDK 5 方法（兼容路径）/ ACP 9 方法（首启引导推荐）；首启问一次，答案决定当次启动 |
 | 对话体验 | 流式气泡 + 思考折叠 + 工具轨迹、插话队列、待办条 / 目标条、上下文小环、重新回答、完成摘要；**模型与思考深度在顶栏**（会话级设置，不占输入框）；输入行是 `[语音][输入框][上下文环][图片][发送]` —— 输入框里不再叠任何控件，长文本不会被按钮遮挡 |
+| 记忆回执 | 新会话/硬约束变化时，回复下显示「本轮新带入 N 条记忆」，点开显示谓词 / 值 / 来源 / 日期（读 `injections.jsonl`）；ACP 在 settle drain 后 attach，2026-11-25 手机 CMM-AL10 截图验成 |
 | 上下文洞察 | 点输入框右侧小环 → 原生面板：窗口占用、系统/工具/消息组成、前缀缓存命中、最近 12 轮；`@ohos/dsh-context-ledger` 写 `<dsh-home>/context-ledger.jsonl`（只记计数）。真机 CMM-AL10 验成：会话累计 83.6k/1.0M、缓存 95%（最近 3 轮），force-stop 重进数据仍在，返回键关面板 |
 | 会话管理 | 列表 / 标题与内容搜索、置顶、归档、多选批量归档、未读标记、每轮用量账本、详情页、导出；**长按菜单三处统一**（会话 / 消息 / 文件行都是 `bindPopup` 自定义浮层，锚在被按元素上，危险项独立成区） |
 | 文件与产物 | 预览（网页 / 图片 / 文本）、`@` 引用、图片存相册、分享卡、导出 Markdown；**长按文件 → 分享到其他应用**（系统 ShareKit，类型先查 UTD、查不到落静态表）；**HTML 产物可导出为整页长图 PNG 或单页 PDF 再分享**（`webPageSnapshot` + 整页绘制开关，真机验成）；**网页由 `html` 工具从内置 A2UI 组件库拼装**（components → create → fill → check，真机端到端验成；**项目默认主题存 `.dsh-html/presets.json`、图表可由 CSV/JSON 直接生成**）；**导出菜单多一项「导出长图（亮 + 暗）」**（强制 data-theme 各截一张整页长图，真机验成：1323×2451 两张，暗底 #14140f / 亮底 #f7f7f5）；**生成的网页不再自带「打印」按钮**（平台说明写进 seed 的 `AGENTS.md`，模型不再生成 `window.print()` 按钮；打印需求走预览页的导出）；**项目文件同步 + 会话同步**（manifest + 分片 + staging 原子落盘 + 配对码；TCP 经 `hdc fport` 与宿主机对端双向验成；**星闪（NearLink）双机端到端验成**：手机 → 平板 17B 文本 + 40000B 二进制完整落地，两端用例 4/4，见 `docs/PROJECT-SYNC.md` §4/§6 与 `docs/STATUS.md` 2026-11-23 条） |
@@ -350,6 +351,7 @@ ACP 实测契约（勿凭直觉改）：
 | `docs/DSH-GO-PARITY.md` | **历史版**（基于 dsh-go 旧快照，无远程/桌宠/插件 UI）。保留作演进记录；结论以 V2 为准 |
 | `docs/OPENBITFUN-COMPARISON.md` | **OpenBitFun 对比**（2026-11-24）：以 openBitFun `5946eab1` / OpenBitFun-Mobile `2cf3a4ad` 为基准，逐域对比两种拓扑（主机 agent + 手机遥控 vs 端侧运行时）、HarmonyOS 端（API 21+ / 12MB 源码 vs API 26 / 388MB HAP）、他们接 dsh 的三条路径（ACP agent / IDE 桥 / 静态 adapter）与 A/B/C 可借鉴清单 |
 | `docs/MOAT-PLAN.md` | **护城河加深方案**（2026-11-25）：三个主攻（Ontology 2.0 记忆 / Continuity 2.0 多设备 / Artifact Studio 产物）+ 三个地基（Footprint 2.1GB→≤1.8GB、Trust Console 网络账本、MCP/i18n）+ 24 周路线、指标与 kill criteria |
+| `docs/OPEN-SOURCE-STRATEGY.md` | **开源策略**（2026-11-25 讨论稿）：MIT 保留、代码/数据/服务边界、BDFL+DCO 治理、插件 SDK 优先于市场、只卖交付不卖数据、90 天合规与发布路线 |
 | `docs/PERSONAL-AGENT.md` | 个人 Agent 与卡片演进方案（Agent Pack / CardSpec / 与 Muse 对比）。**§3–§6 的「垂域卡片做进外壳」方向已停**，文首有 2026-11-12 勘误；保留的是可复用的分析（Muse 对比、度量指标、风险表） |
 | 垂域仓（不在本仓） | <https://github.com/QtePP/Harmony-harness-game>（私有）。游戏的三层——裁判引擎 `@ohos/dsh-sanguo`、棋盘 `SanguoBoard*`、五个 agent pack——都在那边。**本仓不引用它们**：外壳只提供会话/文件/审批/设置，不认识任何垂域概念 |
 | `.workbuddy-ai/memory/` | 本地会话记忆（gitignored，不提交） |

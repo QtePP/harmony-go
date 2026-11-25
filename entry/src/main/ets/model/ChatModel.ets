@@ -2,6 +2,7 @@ import { preferences } from '@kit.ArkData'
 import { util } from '@kit.ArkTS'
 import { common } from '@kit.AbilityKit'
 import { ProjectStore } from './ProjectModel'
+import { InjectedFact } from './MemoryInjection'
 
 /** Who produced a rendered bubble. */
 export enum Role {
@@ -66,6 +67,12 @@ export class ChatMessage {
   toolStatus: string = ''
   /** Tool invocations of this turn, rendered as the expandable 轨迹 chip. */
   trace: ToolTrace[] = []
+  /** Pinned ontology facts injected into this turn's prompt; 0 = the chip is hidden. */
+  memoryCount: number = 0
+  /** True when the plugin injected a removal notice instead of a snapshot. */
+  memoryRemoved: boolean = false
+  /** The injected facts, for the expandable provenance list. */
+  memoryFacts: InjectedFact[] = []
   at: number = 0
 
   constructor(id: string, role: Role, text: string, note: string) {
@@ -194,6 +201,10 @@ interface StoredMessage {
   toolStatus?: string
   /** Tool trace of the turn this row hosted; rows before traces omit it. */
   trace?: StoredTrace[]
+  /** Ontology injection receipt; rows written before this feature omit it. */
+  memoryCount?: number
+  memoryRemoved?: boolean
+  memoryFacts?: InjectedFact[]
 }
 
 interface StoredSession {
@@ -288,6 +299,11 @@ export class SessionStore {
           row.toolOutput = m.toolOutput
           row.toolStatus = m.toolStatus
         }
+        if (m.memoryCount > 0 || m.memoryRemoved) {
+          row.memoryCount = m.memoryCount
+          row.memoryRemoved = m.memoryRemoved
+          row.memoryFacts = m.memoryFacts
+        }
         if (m.trace.length > 0) {
           row.trace = m.trace.map((entry: ToolTrace) => {
             const item: StoredTrace = { name: entry.name }
@@ -380,6 +396,9 @@ export class SessionStore {
             message.trace.push(entry)
           }
         }
+        message.memoryCount = row.memoryCount === undefined ? 0 : row.memoryCount
+        message.memoryRemoved = row.memoryRemoved === true
+        message.memoryFacts = row.memoryFacts === undefined ? [] : row.memoryFacts
         message.at = row.at
         return message
       })

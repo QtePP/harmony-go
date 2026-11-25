@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit'
 import { InteropSheet } from './InteropSheet'
 import { OntologyPanel } from './OntologyPanel'
+import { StoragePanel } from './StoragePanel'
 import { PluginRow } from '../model/PluginCatalog'
 import { AppConfig } from '../common/AppConfig'
 import { fetchModels, ModelEntry } from '../common/ModelCatalog'
@@ -54,6 +55,7 @@ export struct SettingsSheet {
   /** Local model discovery: results of the last scan, and what is adopted now. */
   @State showInterop: boolean = false
   @State showOntology: boolean = false
+  @State showStorage: boolean = false
   @State scanning: boolean = false
   @State scanned: LocalModel[] = []
   @State scannedOnce: boolean = false
@@ -202,6 +204,35 @@ export struct SettingsSheet {
               .fontColor($r('app.color.text_primary'))
               .onClick(() => {
                 this.showOntology = true
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .width('100%')
+
+        Column({ space: 8 }) {
+          Row({ space: 10 }) {
+            Column({ space: 2 }) {
+              Text('存储')
+                .fontSize(14)
+                .fontColor($r('app.color.text_primary'))
+              Text('安装包、运行时载荷、会话与缓存；可清理缓存、重建载荷')
+                .fontSize(11)
+                .fontColor($r('app.color.text_tertiary'))
+                .maxLines(2)
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1)
+
+            Button('查看')
+              .fontSize(12)
+              .height(32)
+              .backgroundColor($r('app.color.surface_muted'))
+              .fontColor($r('app.color.text_primary'))
+              .onClick(() => {
+                this.showStorage = true
               })
           }
           .width('100%')
@@ -791,6 +822,9 @@ export struct SettingsSheet {
 
     if (this.showOntology) {
       OntologyPanel({ onClose: () => { this.showOntology = false } })
+    }
+    if (this.showStorage) {
+      StoragePanel({ onClose: () => { this.showStorage = false } })
     }
     }
     .width('100%')

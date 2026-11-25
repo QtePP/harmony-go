@@ -17,7 +17,16 @@
   `build-release.sh` 已改成 glob 取，不再写死。
 
 ### 新增
-### 新增
+
+- **记忆回执 + 存储面板 + 开源 P0（2026-11-25 真机 / 工程）**。
+  D3：回复下显示「本轮新带入 N 条记忆」，点开显示谓词/值/来源/日期；插件在 `agent/pre-step`
+  写 `<dsh-home>/ontology/injections.jsonl`，ACP 在 settle drain 后 attach（修了「ACP 无
+  `assistant/message`」与「prompt 响应早于最后 chunk」两个根因）。D1/D2：解包成功后删除
+  沙箱 `payload.zip`（−229MB），设置新增存储面板（2.10GB / 运行时 ≈1.43GB，真机截图复核）。
+  开源 P0：`TRADEMARK.md`、`GOVERNANCE.md`、DCO/PR/RFC 模板、`CODEOWNERS`、
+  `scripts/generate-sbom.mjs`（CycloneDX，642 个去重包）、`.github/workflows/release.yml`
+  （payload + SBOM + SHA256；HAP 仍手工签名）、第三方声明更新到 dsh 0.2.2-rc.5。
+  插件单测 50/50（ontology）并入 `bash scripts/test.sh unit`（13 套全绿）。
 
 - **本体时间模型 v2（2026-11-24 真机）**：`fact` 增加 `valid_from` / `valid_to` / `recorded_at` /
   `superseded_at`，`remember` / `correct` 支持 `effective_at`（现实生效时间，缺省为当前时间）；

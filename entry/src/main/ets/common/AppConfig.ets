@@ -270,6 +270,38 @@ export class AppConfig {
     }
   }
 
+  /**
+   * Queue a payload rebuild for the next boot.
+   *
+   * Deleting the extracted runtime while Node is alive is unsafe: modules it
+   * still needs are loaded lazily. The flag is consumed by `NodeHost.boot`
+   * before `Payload.ensure()`, so the rebuild happens on a clean process.
+   */
+  static requestPayloadReset(context: common.UIAbilityContext): void {
+    try {
+      const store = preferences.getPreferencesSync(context, { name: AppConfig.STORE })
+      store.putSync('payload_reset_requested', true)
+      store.flush()
+    } catch (error) {
+      // Losing the flag only means the user taps the button again.
+    }
+  }
+
+  /** Read-and-clear the rebuild flag. `true` means this boot must re-extract. */
+  static consumePayloadReset(context: common.UIAbilityContext): boolean {
+    try {
+      const store = preferences.getPreferencesSync(context, { name: AppConfig.STORE })
+      const requested = store.getSync('payload_reset_requested', false) as boolean
+      if (requested) {
+        store.putSync('payload_reset_requested', false)
+        store.flush()
+      }
+      return requested
+    } catch (error) {
+      return false
+    }
+  }
+
   /** Unknown or legacy values fall back to following the system. */
   static normalizeAppearance(mode: string): string {
     if (mode === AppConfig.APPEARANCE_LIGHT || mode === AppConfig.APPEARANCE_DARK) {

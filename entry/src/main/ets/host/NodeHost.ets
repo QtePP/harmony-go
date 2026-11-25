@@ -72,6 +72,10 @@ export class NodeHost {
         throw new Error('未配置 DeepSeek API Key，请在设置中填写')
       }
 
+      if (AppConfig.consumePayloadReset(context)) {
+        publish(BootPhase.EXTRACTING, '已请求重建载荷：清理旧解包…')
+        await Payload.reset(context)
+      }
       publish(BootPhase.EXTRACTING, '解包 dsh 运行时载荷…')
       this.payloadRoot = await Payload.ensure(context)
 

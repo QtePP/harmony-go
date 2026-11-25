@@ -3,6 +3,8 @@ import { webview } from '@kit.ArkWeb'
 import { fileIo as fs } from '@kit.CoreFileKit'
 import { BusinessError } from '@kit.BasicServicesKit'
 import { ChatMessage, Role, ToolTrace } from '../model/ChatModel'
+import { InjectedFact } from '../model/MemoryInjection'
+import { memoryPredicateLabel, memorySourceLabel } from '../common/MemoryDisplay'
 import { attachmentNote, stagedImageHint, thumbnailLabel } from '../common/AttachmentCopy'
 import { NodeKind, kindAccent, kindGlyph, kindTint, kindVerb, statusLabel, toolKindOf } from '../common/TimelineNode'
 import { isWriteTool } from '../model/Rollback'
@@ -942,6 +944,8 @@ export struct MessageItem {
   @State toolExpanded: boolean = false
   /** Credentials are masked until the user asks to see them. */
   @State revealed: boolean = false
+  /** Injection receipt: the chip expands into its provenance list. */
+  @State memoryOpen: boolean = false
   /** True while this reply is being read aloud, so the menu can offer "stop". */
   @State reading: boolean = false
   /** Long-press menu: open flag, its rows, and where the finger landed. */
@@ -1403,6 +1407,85 @@ export struct MessageItem {
    * expanding into a rail timeline that interleaves thinking previews with
    * command rows in the order they actually happened.
    */
+  @Builder
+  memoryBlock() {
+    Column({ space: 6 }) {
+      Row({ space: 6 }) {
+        Text('◎')
+          .fontSize(11)
+          .fontColor(this.accent)
+        Text(this.message.memoryRemoved ? '本轮移除了硬约束' : `本轮新带入 ${this.message.memoryCount} 条记忆`)
+          .fontSize(11)
+          .fontColor(this.accent)
+        Text(this.memoryOpen ? '收起' : '溯源')
+          .fontSize(10)
+          .fontColor($r('app.color.text_tertiary'))
+      }
+      .height(36)
+      .padding({ left: 9, right: 9 })
+      .backgroundColor($r('app.color.surface_muted'))
+      .borderRadius(10)
+      .onClick(() => {
+        this.memoryOpen = !this.memoryOpen
+      })
+
+      if (this.memoryOpen) {
+        Column({ space: 7 }) {
+          if (this.message.memoryRemoved) {
+            Text('硬约束已全部删除；模型收到移除通知，下轮不再带入。')
+              .fontSize(11)
+              .fontColor($r('app.color.text_secondary'))
+              .lineHeight(16)
+          } else if (this.message.memoryFacts.length === 0) {
+            Text('这次没有可展开的明细。')
+              .fontSize(11)
+              .fontColor($r('app.color.text_secondary'))
+          } else {
+            ForEach(this.message.memoryFacts, (fact: InjectedFact, index: number) => {
+              Column({ space: 2 }) {
+                Row({ space: 6 }) {
+                  Text(memoryPredicateLabel(fact.predicate))
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_tertiary'))
+                    .width(52)
+                  Text(fact.object)
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_primary'))
+                    .layoutWeight(1)
+                }
+                .width('100%')
+
+                Text(`${memorySourceLabel(fact.source)}${fact.observedAt.length > 0 ? ` · ${fact.observedAt.slice(0, 10)}` : ''}`)
+                  .fontSize(9)
+                  .fontColor($r('app.color.text_tertiary'))
+                  .padding({ left: 58 })
+                  .width('100%')
+              }
+              .alignItems(HorizontalAlign.Start)
+              .width('100%')
+            }, (fact: InjectedFact, index: number) => `${fact.predicate}.${fact.object}.${index}`)
+
+            if (this.message.memoryCount > this.message.memoryFacts.length) {
+              Text(`另有 ${this.message.memoryCount - this.message.memoryFacts.length} 条未展开`)
+                .fontSize(9)
+                .fontColor($r('app.color.text_tertiary'))
+            }
+          }
+
+          Text('来自本机本体；删除后下轮不再带入。')
+            .fontSize(9)
+            .fontColor($r('app.color.text_tertiary'))
+        }
+        .alignItems(HorizontalAlign.Start)
+        .width('100%')
+        .padding(10)
+        .backgroundColor($r('app.color.surface'))
+        .borderRadius(10)
+      }
+    }
+    .alignItems(HorizontalAlign.Start)
+  }
+
   @Builder
   traceBlock() {
     Column({ space: 8 }) {
@@ -2089,6 +2172,10 @@ export struct MessageItem {
                 }
               }
             })
+        }
+
+        if (this.message.role === Role.ASSISTANT && (this.message.memoryCount > 0 || this.message.memoryRemoved)) {
+          this.memoryBlock()
         }
 
         if (this.message.role === Role.ASSISTANT && this.message.note === '本机规则') {

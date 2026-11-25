@@ -13,6 +13,7 @@ import { LocalGateCache } from '../common/LocalGateCache'
 import { PluginConfig } from '../common/PluginConfig'
 import { PluginCatalog, PluginRow } from '../model/PluginCatalog'
 import { ChatMessage, ContentHit, Role, SessionStore, SessionSummary, ToolTrace, newSessionId, titleOf } from '../model/ChatModel'
+import { MemoryInjection, MemoryLedger } from '../model/MemoryInjection'
 import { UsageStore } from '../model/Usage'
 import { LocalModel, LocalModelStore, scanLocalModels } from '../common/LocalModel'
 import { ProjectStore, ProjectSummary } from '../model/ProjectModel'
@@ -217,6 +218,10 @@ struct Index {
   private approvalRequest: AcpPermissionRequest | null = null
   /** Live assistant bubble being filled by streaming chunks. */
   private liveAssistant: ChatMessage | null = null
+  /** Epoch ms when the current prompt went out; the memory chip's window starts here. */
+  private turnStartedAt: number = 0
+  /** Latest injection already attached, so one snapshot cannot chip two replies. */
+  private lastMemoryAt: number = 0
   /** Current model config value (JSON array string on the wire). */
   private currentModelValue: string = ''
   /**
@@ -503,6 +508,7 @@ struct Index {
       }
       const message = new ChatMessage(newSessionId(), Role.ASSISTANT, text, notes.join(' · '))
       message.reasoning = reasoning
+      this.attachMemory(message)
       this.append(message)
       void this.persist()
       return
@@ -901,6 +907,54 @@ struct Index {
     }
   }
 
+  /**
+   * Attach the injection receipt to the reply that triggered it.
+   *
+   * The plugin writes `injections.jsonl` from `agent/pre-step`; ACP only tells
+   * us the assistant message, so the turn window is the join key. A snapshot
+   * can fire at most once per window, and `lastMemoryAt` stops a retry or a
+   * duplicated settlement from painting the same chip twice.
+   */
+  private attachMemory(message: ChatMessage): void {
+    if (this.context === null) {
+      return
+    }
+    const to = message.at + 2000
+    const from = this.turnStartedAt > 0 ? this.turnStartedAt : message.at - 120000
+    const record: MemoryInjection | null =
+      MemoryLedger.latestBetween(MemoryLedger.read(this.context), this.currentId, from, to)
+    if (record === null || record.at <= this.lastMemoryAt) {
+      return
+    }
+    this.lastMemoryAt = record.at
+    message.memoryCount = record.count
+    message.memoryRemoved = record.removed
+    message.memoryFacts = record.facts
+  }
+
+  /**
+   * Attach to the reply that actually exists after queued updates drain.
+   *
+   * The prompt response and the final text chunks are separate frames: at
+   * prompt return `liveAssistant` can still be null, so attaching there would
+   * silently miss the row. This runs after `drainAcpUpdates()`.
+   */
+  private attachLatestMemory(): void {
+    let target: ChatMessage | null = this.liveAssistant
+    if (target === null) {
+      for (let index = this.messages.length - 1; index >= 0; index--) {
+        const row = this.messages[index]
+        if (row.role === Role.ASSISTANT && row.text.trim().length > 0) {
+          target = row
+          break
+        }
+      }
+    }
+    if (target !== null) {
+      this.attachMemory(target)
+    }
+  }
+
   /** First line of the newest answer, used as a notification body. */
   private latestAnswerLine(): string {
     for (let index = this.messages.length - 1; index >= 0; index--) {
@@ -1181,6 +1235,7 @@ struct Index {
     await this.ensureSessionOpen(this.currentId, this.currentProjectId)
     this.running = true
     this.traceRow = null
+    this.turnStartedAt = Date.now()
     try {
       await this.host.client.prompt(this.currentId, text)
       this.openedSessions.add(this.currentId)
@@ -1319,10 +1374,17 @@ struct Index {
     // Open the rollback window before the prompt goes out, so tool calls that
     // arrive during this turn have somewhere to record their snapshots.
     this.beginTurn(user.id)
+    this.turnStartedAt = Date.now()
     try {
       const result = await this.host.acp.sessionPromptBlocks(this.currentId, blocks)
       this.turnInFlight = false
       this.running = false
+      // ACP streams into a live row instead of the SDK's settled
+      // `assistant/message` event; attach the injection receipt before the row
+      // reference is dropped, or the chip never reaches the transcript.
+      if (this.liveAssistant !== null) {
+        this.attachMemory(this.liveAssistant)
+      }
       this.liveAssistant = null
       this.endTurn()
       const stop = result.stopReason === undefined ? '' : result.stopReason
@@ -1607,6 +1669,7 @@ struct Index {
     // Chunks that land after the turn settled still belong to the transcript;
     // without this they rendered and then disappeared on the next launch.
     if (!this.turnInFlight) {
+      this.attachLatestMemory()
       void this.persist()
     }
   }
@@ -1622,6 +1685,7 @@ struct Index {
   private settlePersist(): void {
     const hadQueued = this.updateQueue.length > 0
     this.drainAcpUpdates()
+    this.attachLatestMemory()
     if (!hadQueued) {
       void this.persist()
     }
@@ -2761,7 +2825,9 @@ struct Index {
       },
       onRefreshDiagnostics: () => this.refreshDiagnostics(),
       onResetPayload: () => {
-        this.diagnostics = '已标记重建；请彻底退出并重新打开应用。'
+        const context = getContext(this) as common.UIAbilityContext
+        AppConfig.requestPayloadReset(context)
+        this.diagnostics = '已标记重建运行时载荷；请彻底退出并重新打开应用（下次启动会重新解包，约 1–2 分钟）。'
       },
       onTogglePlugin: (id: string, enabled: boolean) => {
         void this.togglePlugin(id, enabled)

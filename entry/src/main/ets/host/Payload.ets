@@ -25,19 +25,25 @@ export class Payload {
 
     const descriptor = await context.resourceManager.getRawFd(Payload.ARCHIVE)
     const stamp = `${descriptor.length}`
+    const archive = `${context.filesDir}/payload.zip`
     try {
       if (fs.accessSync(marker) && fs.accessSync(entry) && fs.readTextSync(marker) === stamp) {
+        // Older builds copied the archive into the sandbox and never removed
+        // it; reclaim that 229 MB on the next launch without re-extracting.
+        Payload.removeArchive(archive)
         return root
       }
 
-      const archive = `${context.filesDir}/payload.zip`
       Payload.copyDescriptor(descriptor, archive)
 
       if (fs.accessSync(root)) {
-        fs.rmdirSync(root)
+        await Payload.removeTree(root)
       }
       fs.mkdirSync(root)
       await zlib.decompressFile(archive, root)
+      // Keep a failed archive for diagnosis, but a successful extraction no
+      // longer needs the 229 MB sandbox copy: the rawfile is the source.
+      Payload.removeArchive(archive)
 
       const handle = fs.openSync(marker, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC)
       fs.writeSync(handle.fd, stamp)
@@ -72,7 +78,7 @@ export class Payload {
   }
 
   /** Drop a previous extraction so the next launch unpacks again. */
-  static reset(context: common.UIAbilityContext): void {
+  static async reset(context: common.UIAbilityContext): Promise<void> {
     const marker = `${context.filesDir}/payload.stamp`
     const root = `${context.filesDir}/payload`
     try {
@@ -80,11 +86,62 @@ export class Payload {
         fs.unlinkSync(marker)
       }
       if (fs.accessSync(root)) {
-        fs.rmdirSync(root)
+        // `fs.rmdirSync(root)` crashed on this tree once ("remove_all_impl
+        // recursion too deep", 2026-11-24). Delete leaves first and only
+        // remove empty directories, so the native recursive walker never
+        // sees 95k entries.
+        await Payload.removeTree(root)
       }
     } catch (error) {
       const failure = error as BusinessError
       console.error(`payload reset failed: ${failure.message}`)
+    }
+    Payload.removeArchive(`${context.filesDir}/payload.zip`)
+  }
+
+  /**
+   * Iterative-ish tree removal: recurse over directories (depth is small),
+   * unlink files one by one, and rmdir only empty directories.
+   *
+   * The platform's `rmdirSync` recursive walker is what failed on the 1.4GB
+   * payload tree; this path never hands it a populated directory.
+   */
+  private static async removeTree(path: string): Promise<void> {
+    let names: string[] = []
+    try {
+      names = await fs.listFile(path)
+    } catch (error) {
+      return
+    }
+    for (const name of names) {
+      const child = `${path}/${name}`
+      try {
+        const stat = await fs.stat(child)
+        if (stat.isDirectory()) {
+          await Payload.removeTree(child)
+        } else {
+          await fs.unlink(child)
+        }
+      } catch (error) {
+        // A file can disappear mid-walk; the directory removal will retry.
+      }
+    }
+    try {
+      await fs.rmdir(path)
+    } catch (error) {
+      // A leftover file keeps the directory; next reset picks it up.
+    }
+  }
+
+  /** Best-effort removal: a leftover archive must never fail a boot. */
+  private static removeArchive(path: string): void {
+    try {
+      if (fs.accessSync(path)) {
+        fs.unlinkSync(path)
+      }
+    } catch (error) {
+      const failure = error as BusinessError
+      console.error(`payload archive cleanup failed: ${failure.message}`)
     }
   }
 }

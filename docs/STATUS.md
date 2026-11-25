@@ -28,7 +28,6 @@
   （“她对虾过敏”不会自动记到妈妈），也不会替代用户主动说的 `remember`。物理双机冲突仍待第二台设备。
   代码：`lib/auto-capture.js`、`lib/store.js`、`index.js`、`lib/render.js`、`OntologyPanel.ets`、
   `test/auto-capture.test.mjs`、`test/pending.test.mjs`；口径同步：`AGENTS.md` §2/§9、`docs/ONTOLOGY.md`。
->
 - **本体 v3 语义层：谓词目录 / 图遍历 / 指标 / 血缘 / 覆盖度 / 冲突（2026-11-25 21:30–22:10，手机 CMM-AL10）**。
   结论先行：**借 NVIDIA Auto Ontology 的语义层纪律，不换存储**。`node:sqlite` 仍是唯一存储；
   `v_live_fact`（排除 `superseded_by` / `retired_at` / `status='proposed'`）成为“当前事实”的唯一定义，
@@ -62,6 +61,22 @@
   assemble/build/deploy；启动 `ontology ready version=13 facts=3 entities=3 pinned=2`，`tools(33)`。
   代码：`lib/vocab.js`、`lib/store.js`、`lib/metrics.js`、`index.js`、`lib/render.js`、`test/semantic.test.mjs`、
   `entry/src/main/ets/view/OntologyPanel.ets`；口径同步：`AGENTS.md` §2/§9、`docs/ONTOLOGY.md`。
+- **记忆回执：回复下出现「本轮新带入 2 条记忆」，点开可溯源（2026-11-25 22:26–22:28，手机 CMM-AL10）**。
+  结论先行：**注入不再只存在于 prompt 里，用户能在回复下看到它带入了什么、从哪来。**
+  插件在 `agent/pre-step` 真正注入 pinned 事实时，往 `<dsh-home>/ontology/injections.jsonl` 追加一行
+  `{v,t,s,turn,step,n,removed,f[]}`；客户端在 ACP 的 live row 落定后按「本轮开始 → 回复」时间窗匹配，
+  显示 chip；点开显示谓词、值、来源、观察日期。
+  真机：新会话问「我叫什么？对什么过敏？」→ 回复「你叫林舟，对花生过敏。」→
+  chip **「本轮新带入 2 条记忆」** → 展开 **过敏 / 花生**、**姓名 / 林舟**，来源均为
+  「它从对话里记的 · 2026-11-24」。账本行 `s=fde52b27-… n=2`。
+  **两个根因（都修了）**：① ACP 没有 SDK 的 `assistant/message` 落定事件，回复是流式写进
+  `liveRow()`，最初把 attach 挂在 SDK 事件上 → ACP 永远没有 chip；② `session/prompt` 的响应
+  **早于**最后一批 chunk，响应返回时 `liveAssistant` 可能还是 null，真正的回复行稍后 drain 才创建
+  → 改为 `settlePersist()` 先 `drainAcpUpdates()`、再 `attachLatestMemory()`、最后 persist。
+  证据：截图 `docs/images/screens/13-memory-chip.jpg`、`14-memory-provenance.jpg`；
+  插件单测 **34/34** + 本地真实 pre-step 冒烟 **SMOKE PASS**。
+  边界：chip 只在**真正注入的那一轮**出现（新会话或硬约束变化），不是每轮都有；
+  本次构建之前生成的历史消息不会补 chip；删除记忆后下轮不再带入。
 - **存储面板 + 删载荷副本：真实占用 2.10GB，先拿回 229MB（2026-11-25 20:12–20:35，手机 CMM-AL10）**。
   结论先行：**设备上真正的大头不是 HAP，是解包后的运行时（≈1.4GB）**。`Payload.ets` 原来把 rawfile 里的
   `dsh-payload.zip` 复制到 `filesDir/payload.zip` 再解包，**成功/幂等两条路径都没删副本**；本次改成

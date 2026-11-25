@@ -185,6 +185,17 @@ bash scripts/build-release.sh
 | `build/outputs/default/dshharmony-default-signed.app` | **AGC 提交（含测试轨道）上传**——AGC 的文件选择器直接过滤掉 .hap，只收 App Pack |
 | `entry/build/default/outputs/default/entry-default-signed.hap` | 无 hdc 直装用途（见下：`9568322`），仅作签名链自检 |
 
+发布侧还有两个**不需要 DevEco** 的资产，由 CLI/CI 生成：
+
+```bash
+node scripts/assemble-payload.mjs                         # dsh-payload.zip（≈240MB）
+node scripts/generate-sbom.mjs --out dist/sbom.cdx.json   # CycloneDX 1.5，642 个去重包
+sha256sum entry/src/main/resources/rawfile/dsh-payload.zip dist/sbom.cdx.json > dist/SHA256SUMS
+```
+
+GitHub Actions 的 `release` workflow（手动触发，输入已存在的 tag）会跑上面三步并上传
+payload / SBOM / SHA256；**签名 HAP 不在 CI 里构建**，仍走 `scripts/build-release.sh`。
+
 **AGC 校验的是 .app 容器本身的签名（实测 2026-10-31）**：容器未签名的 .app 被测试轨道以
 `991 非法软件包`（"未检测"到签名）拒收。正确形态（= DevEco Studio 签名构建的产物）：
 **包内 HAP 保持未签名 + 容器整体签名**——hvigor `PackageApp` 装的永远是未签名 HAP
@@ -218,7 +229,7 @@ assembleApp` 一次构建出**未签名** HAP 与 .app（仓库口径的 `build-
 
 ### 分发前还要想清楚
 
-- **体积 335MB**：含 240MB dsh 载荷，首次启动解包 60–90 秒
+- **体积 ≈390MB**（2026-11-25 构建）：含 240MB dsh 载荷；解包后 ≈1.4GB，首次启动 60–90 秒
 - **API 26 门槛**：HarmonyOS 6.x 及更早装不上，当前装机量有限
 - **接收方需自备 API Key**：密钥不能随包分发
 - **上架需审核**：本脚本只产出可安装的包，上架 AppGallery 另需在 AGC 提交

@@ -20,7 +20,7 @@
 | 大脑 | **dsh 0.2.2-rc.5**，676 包 | `scripts/assemble-payload.mjs` 的 `PINNED_DSH_VERSION` |
 | 引擎 | **Node v24.2.0**（`libnode.so`，同进程） | 设备端 `dsh-home/bridge-status.json` 的 `node` |
 | 桥 | **127.0.0.1:4517**，换行 JSON-RPC 2.0，**单客户端** | `host/bootstrap.cjs` |
-| 载荷 | `dsh-payload.zip` ≈240MB（十进制），解包后 1.0G | `entry/src/main/resources/rawfile/` |
+| 载荷 | `dsh-payload.zip` ≈240MB（十进制），解包后 ≈1.4G（2026-11-25 实测） | `entry/src/main/resources/rawfile/` |
 
 ## 1. 进程剖面
 
