@@ -20,6 +20,10 @@ interface OntologyFact {
   qualifier: string
   confidence: number
   source: string
+  source_kind?: string
+  source_ref?: string | null
+  status?: string
+  confirmed_at?: string | null
   observed_at: string
   valid_from: string
   valid_to: string | null
@@ -192,17 +196,39 @@ export struct OntologyPanel {
     }
   }
 
-  private sourceLabel(source: string): string {
-    if (source === 'user') {
+  private sourceLabel(fact: OntologyFact): string {
+    const kind = fact.source_kind ?? fact.source
+    if (kind === 'user') {
       return '你告诉它的'
     }
-    if (source === 'model') {
+    if (kind === 'migration') {
+      return '从旧画像迁入'
+    }
+    if (kind === 'import') {
+      return '同步导入'
+    }
+    if (kind === 'system') {
+      return '系统写入'
+    }
+    if (kind === 'model') {
       return '它从对话里记的'
     }
-    if (source === 'import') {
-      return '导入'
+    return kind
+  }
+
+  /** Short provenance hint; the full ref (session id / bundle name) stays internal. */
+  private sourceRefLabel(fact: OntologyFact): string {
+    const ref = fact.source_ref ?? ''
+    if (ref.startsWith('session:')) {
+      return '来自该会话'
     }
-    return source
+    if (ref.startsWith('bundle:')) {
+      return '来自同步包'
+    }
+    if (ref.includes('AGENTS.md')) {
+      return '来自旧画像'
+    }
+    return ''
   }
 
   private showNote(text: string): void {
@@ -353,6 +379,14 @@ export struct OntologyPanel {
               .border({ width: 1, color: this.accent })
               .borderRadius(6)
           }
+          if (fact.status === 'proposed') {
+            Text('待确认')
+              .fontSize(9)
+              .fontColor($r('app.color.text_tertiary'))
+              .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+              .border({ width: 1, color: $r('app.color.text_tertiary') })
+              .borderRadius(6)
+          }
           Text(fact.subject)
             .fontSize(11)
             .fontColor($r('app.color.text_tertiary'))
@@ -370,7 +404,7 @@ export struct OntologyPanel {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
 
-        Text(`${fact.qualifier.length > 0 ? `${fact.qualifier} · ` : ''}${(fact.valid_from ?? fact.observed_at).slice(0, 10)} 生效 · ${this.sourceLabel(fact.source)}`)
+        Text(`${fact.qualifier.length > 0 ? `${fact.qualifier} · ` : ''}${(fact.valid_from ?? fact.observed_at).slice(0, 10)} 生效 · ${this.sourceLabel(fact)}${this.sourceRefLabel(fact).length > 0 ? ` · ${this.sourceRefLabel(fact)}` : ''}`)
           .fontSize(10)
           .fontColor($r('app.color.text_tertiary'))
           .maxLines(1)

@@ -1,11 +1,13 @@
 # ONTOLOGY.md — 端侧用户本体（SQLite + 注入 + 面板）
 
-> **状态：v1 真机闭环（2026-11-23，手机 CMM-AL10）。** 不再是探针：模型能写、新会话能自动带上硬约束、
-> 用户能在「设置 → 它知道什么」里查看/删除/分享。探针阶段的 WAL/force-stop 数据留在 `docs/STATUS.md`
-> 同一天的前一条记录里。
+> **状态：v3 语义层（2026-11-25）。** v1 真机闭环（2026-11-23，手机 CMM-AL10）：模型能写、新会话能自动带上硬约束、
+> 用户能在「设置 → 它知道什么」里查看/删除/分享。v2 加了现实生效时间（`valid_from` / `recorded_at`）。
+> v3 借鉴 NVIDIA Auto Ontology 的语义层纪律：谓词目录（含义/同义词/例子）、`related` 图遍历、
+> `metric` 确定性计算、`source_kind`/`source_ref` 血缘、`search` 覆盖度、导入冲突报告。
+> 探针阶段的 WAL/force-stop 数据留在 `docs/STATUS.md` 同一天的前一条记录里。
 >
 > 一句话：**本体存在手机 SQLite 里；硬约束每次会话自动注入；其余事实由 `ontology` 工具按需查询；
-> 用户能看见模型记住了什么，并删掉它。**
+> 每个值知道从哪来；用户能看见模型记住了什么，并删掉它。**
 
 ## 1. 架构
 
@@ -33,10 +35,14 @@ ArkTS 设置面板 ──读──> <DSH_HOME>/ontology/snapshot.json
 ```sql
 entity(id, kind, name, aliases, created_at, merged_into)
 fact(id, subject, predicate, object, object_kind, qualifier,
-     confidence, source, observed_at,
-     valid_from, valid_to, recorded_at,
+     confidence, source, source_kind, source_ref, status, confirmed_at,
+     observed_at, valid_from, valid_to, recorded_at,
      superseded_by, superseded_at, retired_at, pinned)
 meta(key, value)
+
+-- 语义视图（不是表）
+v_live_fact   -- 当前事实的唯一权威定义：未取代、未删除、status <> 'proposed'
+v_entity_edge -- 实体值事实变成图边：from_id, predicate, to_id, qualifier
 ```
 
 - `entity` 与 `fact` 分开：两个“小李”不会合成一行；`relation` 的 object 指向实体。
@@ -44,10 +50,25 @@ meta(key, value)
   历史还在，`search(history:true)` 能查“以前是什么”。
 - **时间字段**：`observed_at`（何时得知）、`valid_from`/`valid_to`（现实世界生效区间）、
   `recorded_at`（系统写入时间）、`superseded_at`（旧值被取代的系统时间）、`retired_at`（删除）。
-  当前值 = `superseded_by IS NULL AND retired_at IS NULL`；单值谓词同一时刻最多一条 live。
+  当前值 = `v_live_fact`；单值谓词同一时刻最多一条 live。
+- **血缘字段**：`source_kind` = `user` / `model` / `migration` / `import` / `system`；
+  `source_ref` = `session:<id>`、`bundle:<file>` 或 `AGENTS.md#user-profile`。
+  `source` 保留为人类可读旧字段，新代码读 `source_kind`。
+- **状态字段**：`status` = `asserted` / `proposed`。`proposed` 只用于将来的自动抽取候选：
+  它不进 `v_live_fact`，因此不会被 `search` 返回、不会被 pinned 注入，也不会覆盖当前值；
+  用户确认后才写 `asserted`。当前工具写入默认 `asserted`。
+- **`v_live_fact` 是唯一“当前”定义**：不再在十几处查询里重复 `superseded_by IS NULL AND retired_at IS NULL`。
+  以后改“当前”的语义（例如排除 `proposed`）只改视图。
 - `pinned` 由谓词决定，不由模型心情决定：过敏、饮食、语言、时区、称呼、沟通偏好永远注入。
-- 受控词表在 `lib/vocab.js`（代码，不是表）。未知谓词直接报错并给出合法列表，防止 `favoriteColor`
-  之类的垃圾谓词把图变成垃圾场。
+- 受控词表在 `lib/vocab.js`（代码，不是表），每条带 `about` / `synonyms` / `examples`；
+  未知谓词直接报错并给出最近邻建议，防止 `favoriteColor` 之类的垃圾谓词把图变成垃圾场。
+
+### 2.0 schema v3 是增量迁移
+
+v2 是硬断点（旧库没有 `valid_from` 就重建）。v3 不重建：`openStore` 用
+`ALTER TABLE fact ADD COLUMN` 补 `source_kind` / `source_ref` / `status` / `confirmed_at`，
+再按旧 `source` 回填 `migrated` / `import`；已有事实、历史、tombstone 全部保留。
+`meta.schema_version` = `3`。
 
 ### 2.1 时间与冲突
 
@@ -57,7 +78,7 @@ meta(key, value)
 - **同步**：先比 `valid_from`，再比 `recorded_at`；新者取代旧者，旧者写入历史；相等时本地保留。
 - **删除**：`retired_at`；接收端本地 `valid_from > retired_at`（删除后重新添加）则保留，否则 retire。
 - **`observed_at` 与 `valid_from` 分离**：用户说“我去年搬到上海”可以 `effective_at=去年`，而 `observed_at/recorded_at` 仍是今天。
-- **schema v2 是硬断点**：`openStore` 发现旧 `fact` 没有 `valid_from` 时直接丢掉 `fact/entity/meta` 重建；不保留旧数据（本次用户明确同意）。`meta.version` 归零。
+- **schema v2 是硬断点**：`openStore` 发现旧 `fact` 没有 `valid_from` 时直接丢掉 `fact/entity/meta` 重建；不保留旧数据（本次用户明确同意）。`meta.version` 归零。**v3 不再重建**：只 `ALTER TABLE ADD COLUMN` 补血缘/状态字段（见 §2.0）。
 
 | 谓词 | 值类型 | 基数 | pinned | 说明 |
 |---|---|---|---|---|
@@ -79,18 +100,43 @@ meta(key, value)
 
 ## 3. 工具
 
-`ontology` 一个工具、八个动作：
+`ontology` 一个工具、十一个动作：
 
 | 动作 | 作用 | 关键行为 |
 |---|---|---|
-| `remember` | 记一条事实 | 重复 = no-op；单值谓词按 `effective_at` 决定取代还是写历史；未知谓词报错 |
+| `remember` | 记一条事实 | 重复 = no-op；单值谓词按 `effective_at` 决定取代还是写历史；未知谓词报错并给最近邻 |
 | `correct` | 改一条事实 | 用 `fact_id` 指向旧值，`effective_at` 默认为 now；旧值 `valid_to/superseded_at` 被关闭，历史保留 |
 | `forget` | 删一条/一批 | 默认软删；`fact_id`、`query`、`subject`、`predicate` 四选一；没有选择器时拒绝清库 |
-| `search` | 查 | `history:true` 能查被取代/删除的旧值 |
+| `search` | 查 | `history:true` 能查被取代/删除的旧值；查询会按谓词同义词扩展；返回 `coverage`（exact/partial/none） |
 | `list` | 概览 | pinned + 最近 10 条 + 计数 |
+| `describe` | 查词表 | 不带参数返回 23 个谓词的含义/同义词/例子；带 `predicate` 返回单条；未知给最近邻 |
+| `related` | 图遍历 | 从 `self` 或任意实体走 1–2 跳，返回节点、事实、入/出边；`predicates` 可过滤；节点上限 20/50 |
+| `metric` | 确定性计算 | `age` / `days_until` / `days_since` / `count`；返回 `value`、`unit`、`rule`、输入事实，不让模型心算日期 |
 | `export` | 导出 | `markdown` / `json` / `turtle` 写到 `<dsh-home>/ontology/export.*`；`bundle` + `to_workspace:true` 写 `workspace/ontology/` 供项目同步 |
-| `import` | 合并 bundle | `path` 指向 app files 目录内的 `ontology-bundle-*.json`；按 name/alias 对齐、只合并活事实、单值按 `valid_from` 新者胜；较早的 incoming 存为历史；面板「导入最新同步包」走同一逻辑 |
-| `migrate_profile` | 迁移旧画像 | 默认 dry-run；`apply:true` 读 `<dsh-home>/AGENTS.md` 受管块，备份后逐条映射（姓名/过敏/饮食/语言/城市/关系→受控谓词，其余→带日期的 `note`），清空受管块；任一条失败则不清块；旧日期不会覆盖本体里更新的值 |
+| `import` | 合并 bundle | `path` 指向 app files 目录内的 `ontology-bundle-*.json`；按 name/alias 对齐、只合并活事实、单值按 `valid_from` 新者胜；**返回 conflicts** |
+| `migrate_profile` | 迁移旧画像 | 默认 dry-run；`apply:true` 读 `<dsh-home>/AGENTS.md` 受管块，备份后逐条映射，清空受管块；旧日期不会覆盖本体里更新的值 |
+
+### 3.1 语义层（describe / related / metric）
+
+这三件事是 v3 借鉴 NVIDIA Auto Ontology 的地方，刻意只借“语义层纪律”，不借它的
+Postgres/pgvector 或 text-to-SQL agent：
+
+- **`describe`**：`vocab.js` 的 `about` / `synonyms` / `examples` 第一次真正对模型可见。
+  模型搜“忌口/住哪/做什么工作”时不再靠猜；`search` 也会用同义词扩展谓词。
+- **`related`**：`relation` / `works_on` / `member_of` 不再只是存下来的边。从 `self` 走一跳
+  就能拿到“妈妈 + 她的过敏/生日”或“项目 + 截止日”，不用模型自己串两次查询。
+  深度上限 2、节点上限 50：个人图很小，但“六跳以内的一切”既是隐私风险也是 prompt 炸弹。
+- **`metric`**：`age`、`days_until`、`days_since`、`count` 用代码算，返回 `rule` 版本和输入事实。
+  模型只转述，不做日历算术。这是 Auto Ontology “Metric = 受审 SQL”在端侧的等价物。
+
+### 3.2 覆盖度与冲突
+
+- `search` 的 `coverage`：有结果 = `exact`；实体存在但这条事实没有 = `partial`；
+  完全没记录 = `none`。`partial`/`none` 的 summary 明确写“没有记录 ≠ 事实为假”，
+  防止模型把“查不到”答成“不是”。
+- `import` 的 `conflicts`：同一单值谓词、两边值不同时，返回
+  `{predicate, local, incoming, kept, reason}`；不再静默让新者赢。旧值仍在历史里，
+  聊天里会显示“kept X (reason)”。目前不做自动合并 UI，只把冲突说清楚。
 
 工具描述里明确：不用它记一次性对话、不记密码/密钥/身份证号；该用 `correct` 的时候不要新增一条
 矛盾值。旧的 `user_profile` 已于 2026-11-24 停用；历史受管块用 `migrate_profile` 迁入本体，`AGENTS.md` 里用户自己写的 prose 保留。
@@ -118,7 +164,9 @@ system section 负责“什么时候做”。
 
 入口：设置 → 它知道什么 → 打开。面板是设置 sheet 内的全屏覆盖（不是嵌套 sheet，避免手机上两层拖拽面）。
 
-- **列表**：每条显示谓词中文名、`硬约束` 徽章、主体、值、日期、来源（你告诉它的/它从对话里记的）。
+- **列表**：每条显示谓词中文名、`硬约束` 徽章、主体、值、日期、来源（你告诉它的/它从对话里记的/
+  从旧画像迁入/同步导入）。v3 起来源读 `source_kind`，并通过 `source_ref` 显示“来自该会话 /
+  来自同步包 / 来自旧画像”；`proposed` 会带“待确认”徽章（当前没有自动抽取，所以通常看不到）。
 - **搜索**：对主体/谓词/值/角色做本地过滤（快照最多 400 条）。
 - **删除**：二次确认后写命令文件；插件下一 tick 软删并重写快照；面板 1.8s 后重读。
 - **分享**：把 `summary.md` 交给系统分享面板（ShareKit）；实测 420B 的 Markdown 能打开分享。
@@ -145,7 +193,8 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
   { format: "harmonygo-ontology-bundle", version: 1,
     entities: [{id, kind, name, aliases}],
     facts: [{subject, subject_name, predicate, object, object_id, object_name,
-             object_kind, qualifier, confidence, source, observed_at,
+             object_kind, qualifier, confidence, source, source_kind, source_ref,
+             status, confirmed_at, observed_at,
              valid_from, valid_to, recorded_at}],
     tombstones: [{subject_name, predicate, object, object_name, object_kind,
                   qualifier, retired_at}] }
@@ -170,8 +219,10 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
 - **删除传播（tombstone）**：bundle 带软删事实的 `retired_at`；导入时先合并活事实，再处理 tombstone：
   本地同身份的事实若 `valid_from <= retired_at`，按 tombstone 的时间 retire；若 `valid_from > retired_at`
   （删除后重新添加），保留新的。被 `correct` 取代的旧值不是删除，不发 tombstone。
+- **冲突报告**：单值谓词两边值不同时，`import` 返回 `conflicts`（local / incoming / kept / reason），
+  不静默；较旧的一方按既有规则进历史，较新的一方保留。
 - 旧 bundle（没有 `tombstones` 字段）仍可导入；新 bundle 旧接收端会忽略该字段。
-- 导入幂等：重复导入只增加 `skipped`；删除传播计入 `retracted`。
+- 导入幂等：重复导入只增加 `skipped`；删除传播计入 `retracted`；冲突计入 `conflicts`。
 
 真机（2026-11-24 03:33–03:59，手机 CMM-AL10 ↔ 平板 MLR-AL00）：
 
@@ -216,8 +267,10 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
   用的，不是端侧推理。个人事实的封闭世界 + 时间 + 来源本来就更适合关系表。
 - **旧 `user_profile` 已停用**（受管块仍在文件里时，用 `migrate_profile` 迁移；模型不再写第二份）。
   下一步要么把旧块导入本体，要么把 `user_profile` 降级为兼容层。
-- **没有多设备合并**：当前只导出/分享；项目同步（TCP/星闪）没有接本体。
+- **多设备合并是手工 bundle**：面板导出/导入 + 项目同步；冲突只报告，没有自动合并 UI，也没有实时同步。
 - **规模未压测**：面板/快照上限 400 条，`export` 最多 2000 条；10k+ 行未测。
+- **`related` 只走 1–2 跳**：节点上限 50，适合个人图，不是通用图查询引擎。
+- **`metric` 只有四个**：`age` / `days_until` / `days_since` / `count`；没有任意 SQL 指标。
 - **平板已验（2026-11-24）**：面板导入/注入在 MLR-AL00 上验成；手机（单栏）与平板（双栏）的布局各自此前已验。
 - **旧的 `spike.db` 还在** `<DSH_HOME>/ontology/spike.db`（探针留下的）；不影响本体，可手动删。
 - **敏感事实没有审阅队列**：模型仍可能把不该记的写进去；面板的删除是事后纠错，不是事前同意。
@@ -230,10 +283,11 @@ workspace/ontology/ontology-bundle-2026-11-23T19-38-04-314Z.json
 代码：
 
 - `host/profile-ohos/profiles/ohos/node_modules/@ohos/dsh-ontology/index.js` — 插件/工具/注入/命令通道
-- `.../lib/vocab.js` — 受控词表
-- `.../lib/store.js` — SQLite schema、实体消歧、supersede/retire、search
+- `.../lib/vocab.js` — 受控词表（含义/同义词/例子/最近邻）
+- `.../lib/store.js` — SQLite schema、`v_live_fact`/`v_entity_edge`、实体消歧、supersede/retire、search、related、bundle 合并/冲突
+- `.../lib/metrics.js` — `age` / `days_until` / `days_since` / `count` 确定性计算
 - `.../lib/render.js` — pinned 块、Markdown、Turtle、快照
-- `.../test/*.test.mjs` — 26 个单测（含 bundle 合并/幂等/删除传播、最近删除去重、旧画像解析/映射、preserveNewer）
+- `.../test/*.test.mjs` — 40 个单测（含语义目录、proposed 排除、血缘往返、related、导入冲突、metric、bundle 合并/幂等/删除传播、preserveNewer）
 - `entry/src/main/ets/view/OntologyPanel.ets` — 原生面板
 - `entry/src/main/ets/view/SettingsSheet.ets` — 入口
 - bundle：`@ohos/dsh-bundle-ohos` 的 `cordis.patch.yml` + `package.json`
@@ -255,9 +309,14 @@ hdc shell tail -n 20 /data/app/el2/100/base/com.qtepp.harmonygo/haps/entry/files
 
 ## 9. 下一步
 
+- **v3 语义层已真机验（2026-11-25，手机 CMM-AL10）**：`describe` 的中文同义词/例子、`related` 的
+  “我妈对什么过敏 + 项目截止”、`metric days_until` 的 36 天、`search` 的 coverage=none、
+  `source_kind`/`source_ref` 血缘、面板“你告诉它的 · 来自该会话”标签都已验；schema v3 原地迁移，
+  旧 3 条事实保留。**尚未真机**：`import conflicts`（本机单测 1 条）、`migrate_profile` 写
+  `source_kind='migration'`（旧库已迁移，未重跑迁移器）。
 - 平板双栏的面板/同步/导入/删除传播已验；剩余 ≥840vp 的字号复测。
 - 旧 `user_profile` 的迁移器已做；后续可删掉旧插件代码/测试。
-- 敏感谓词写入前确认（过敏/关系/财务）——把“事后删”变成“事前同意”。
+- 敏感谓词写入前确认（过敏/关系/财务）——v3 已留 `status=proposed`，等自动抽取落地后接“待确认”队列。
 - 10k 行压测与索引检查；`search` 的 FTS5 可选。
 - tombstone 已随 bundle 传播；完整的双机 NearLink「手机删→平板跟着删」回环还没跑（传输层未变）。
 - 若要跨工具/跨应用交换，再补 `export turtle` 的 SHACL 校验；仍不做 DL 推理。

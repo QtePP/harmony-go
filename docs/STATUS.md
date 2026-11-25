@@ -7,6 +7,63 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 >
+- **本体 v3 语义层：谓词目录 / 图遍历 / 指标 / 血缘 / 覆盖度 / 冲突（2026-11-25 21:30–22:10，手机 CMM-AL10）**。
+  结论先行：**借 NVIDIA Auto Ontology 的语义层纪律，不换存储**。`node:sqlite` 仍是唯一存储；
+  `v_live_fact`（排除 `superseded_by` / `retired_at` / `status='proposed'`）成为“当前事实”的唯一定义，
+  `v_entity_edge` 把实体值事实变成图边。工具从 8 个动作扩到 11 个：新增 `describe`（23 个谓词的
+  含义/同义词/例子 + 最近邻）、`related`（1–2 跳，节点上限 50）、`metric`（`age` / `days_until` /
+  `days_since` / `count`，返回 `rule` 与输入事实）。`search` 返回 `coverage`（exact/partial/none），
+  空结果明确说“没记录 ≠ 为假”；`import` 返回 `conflicts`（local/incoming/kept/reason）。
+  schema v3 只增量 `ALTER TABLE ADD COLUMN` 补 `source_kind` / `source_ref` / `status` / `confirmed_at`，
+  并按旧 `source` 回填 migrated/import；不重建、不丢历史。工具写入的 `source_ref` 取
+  `exec.agent.session.header.id`，写成 `session:<id>`；迁移写 `AGENTS.md#user-profile`；
+  导入写 `bundle:<file>`。`status='proposed'` 只留给自动抽取候选，当前没有写入路径。
+  本机验证：`node --test test/*.test.mjs` **40/40**（新增语义目录、proposed 排除、血缘 bundle 往返、
+  `related` 方向、导入冲突、四个 metric）；`node --check` 通过；`devecocli check arkts OntologyPanel.ets`
+  0 error（6 个既有 deprecated 警告）；`devecocli build` **BUILD SUCCESSFUL**。
+  **真机（2026-11-25 21:47–22:08，手机 CMM-AL10）**：部署后 `ontology ready version=5 facts=3`，
+  旧库原地迁移到 schema v3——`PRAGMA table_info(fact)` 已有 `source_kind` / `source_ref` / `status` /
+  `confirmed_at`，`sqlite_master` 有 `v_live_fact` / `v_entity_edge`，`meta.schema_version=3`，
+  原有 3 条 live 事实（林舟/花生/减脂目标）全部保留。模型实测：
+  - `describe allergy` → 返回“硬性安全约束”、同义词“过敏/忌口/不能吃/吃了会不舒服/过敏原”、例子“花生/海鲜”；
+  - 说“记住：我妈妈叫王芳，她对虾过敏；我在做 HarmonyGo 项目，截止 2026-12-31” → 6 步写入 4 条，
+    DB 里 `source_kind='user'`、`source_ref='session:<会话id>'`，回答还顺带算了“距今 36 天”；
+  - `related self` + `metric days_until` → 3 步返回“王芳（妈妈）· allergy = 虾”、
+    “我 · works_on = HarmonyGo”“我 · deadline = 2026-12-31”“还剩 36 天”；
+  - `search self.employer` → 2 步，coverage=none，模型只答“没有记录。”；
+  - 面板「它知道什么」：7 条事实 / 3 个实体 / 3 条硬约束；王芳的虾、截止日、项目、关系显示
+    “你告诉它的 · 来自该会话”，旧的林舟/花生显示“它从对话里记的”；面板截图见
+    `docs/images/screens/13-ontology-v3.jpg`。
+  **验收后清理**：用 `ontology forget` 删掉王芳关系/虾过敏/HarmonyGo/截止日四条，DB 回到
+  **3 条 live**（林舟/花生/减脂目标）、5 条软删；没有动旧数据。
+  **最终版**只把 `coverage` 也渲染进工具文本（模型能直接看到 `coverage: none`），重新
+  assemble/build/deploy；启动 `ontology ready version=13 facts=3 entities=3 pinned=2`，`tools(33)`。
+  代码：`lib/vocab.js`、`lib/store.js`、`lib/metrics.js`、`index.js`、`lib/render.js`、`test/semantic.test.mjs`、
+  `entry/src/main/ets/view/OntologyPanel.ets`；口径同步：`AGENTS.md` §2/§9、`docs/ONTOLOGY.md`。
+- **存储面板 + 删载荷副本：真实占用 2.10GB，先拿回 229MB（2026-11-25 20:12–20:35，手机 CMM-AL10）**。
+  结论先行：**设备上真正的大头不是 HAP，是解包后的运行时（≈1.4GB）**。`Payload.ets` 原来把 rawfile 里的
+  `dsh-payload.zip` 复制到 `filesDir/payload.zip` 再解包，**成功/幂等两条路径都没删副本**；本次改成
+  「解包成功后删除、失败保留供诊断、旧版本遗留副本在下次 `ensure()` 幂等路径清理」。
+  真机验证：重装启动后 `hdc shell ls .../files/payload.zip` 返回 **No such file**；`du -sk payload` =
+  **1,507,045 KB**；`storageStatistics.getCurrentBundleStats()`：安装包 **390.3MB** + 应用数据 **1.72GB**
+  （其中缓存 209.8MB）= **2.10GB**；dsh-home 8.1MB、workspace 15MB、workspaces 67MB、cacheDir 17.2MB。
+  **面板首版踩了一个口径坑**：把 `appSize + dataSize + cacheSize` 相加得到 2.31GB，真机截图后才确认
+  `dataSize` 已包含 `cacheSize`；改成 `total = appSize + dataSize`，并把标签写成「应用数据（含缓存）」「其中缓存」。
+  第二版（总量/标签修正）与最终版（文案 + 安全删除 + 缓存保护）都已 build + install；中途设备锁屏导致两次
+  `deploy.sh` 启动报 `10106102`（不是应用崩溃）。**解锁后最终版启动成功，面板截图复核**：
+  **2.10GB** / 安装包 **390.3MB** / 应用数据 **1.72GB**（缓存 **209.8MB**）/ 运行时 **≈1.43GB** /
+  会话 6.1MB / workspace 13.0MB / workspaces 63.3MB / 可清理缓存 17.2MB；截图存
+  `docs/images/screens/12-storage.jpg`。
+  首版截图曾显示 2.31GB / 运行时 1.64GB（缓存被双算）；修正后与实测一致。ArkTS check 0 error、build 成功。
+  **没有触发「重建载荷」**（会重解包 1.4GB，留到下次专门验）。
+  **重建路径顺手修了一个旧雷**：2026-11-24 记录过 `fs.rmdirSync(payload)` 在 1.4GB 树上
+  `remove_all_impl recursion too deep` 崩溃；本轮把 `Payload.reset()` 与版本切换时的清理改成
+  `removeTree()`——逐文件 `unlink`、只对空目录 `rmdir`，不再把 9.5 万文件交给平台递归删除器。
+  仍**没有真机触发重建**（要重解包 1.4GB），只过了 ArkTS check + build。
+  代码：`Payload.ets`（删副本）、`AppConfig.requestPayloadReset/consumePayloadReset`、`NodeHost.boot`（下次启动消费）、
+  `StorageUsage.ets`（storageStatistics + 小目录扫描 + 派生运行时）、`StoragePanel.ets`、`SettingsSheet` 入口。
+  口径同步：`AGENTS.md` §2/§6/§7、`docs/ARCHITECTURE.md`、`docs/BUILD.md`、`docs/MOAT-PLAN.md`
+  （Footprint 目标从 1.1GB 重新校准到 ≤1.8GB）。
 - **本体时间模型 v2：valid_from / valid_to / recorded_at / superseded_at + effective_at（2026-11-24 08:14–08:38，平板 MLR-AL00）**。
   结论先行：**状态现在有“现实生效时间”和“系统写入时间”两层**，不只是写入顺序。schema 直接重建
   （用户明确不用保留旧数据）：`fact` 加 `valid_from/valid_to/recorded_at/superseded_at`；
