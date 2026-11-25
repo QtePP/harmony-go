@@ -6,6 +6,28 @@
 > **口径不在这里**：术语、协议契约、平台约束、签名规则都在 `AGENTS.md`（唯一权威）。
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
+
+- **本体 v3.1：自动抽取候选 → 待确认队列，双 store import 冲突（2026-11-25 22:20–22:47，手机 CMM-AL10）**。
+  结论先行：**模型没调工具的那一句，也能变成候选，但绝不直接生效**。新增 `propose` 动作 +
+  `agent/turn-stopping` 的确定性抽取：只认一阶明确句式（我叫/我对…过敏/我住在…/我在做…项目，
+  截止…），不调模型、不花 token；`DSH_ONTOLOGY_AUTOCAPTURE=0` 可关。候选写 `status='proposed'`，
+  不进 `v_live_fact`，所以不注入、不被 `search` 返回、不参与单值取代；面板「待确认」接受/忽略，
+  接受时按 `valid_from` 照常取代或写历史，忽略硬删；候选不随 bundle 同步。
+  真机：发「我对芒果过敏。不要调用任何工具，只回一句话。」→ 模型答“暂时还没写进长期记忆”，
+  但 turn-stopping 自动写入 `allergy=芒果`（`source_kind='model'`、
+  `source_ref='session:fde52b27…'`）；`snapshot.json` 显示 `facts=3, pending=1`；面板顶部
+  「待确认 · 1 条」显示芒果卡，点「接受」后变 **4 条事实 / 3 条硬约束 / 0 待确认**，芒果进入 live
+  且带“来自该会话”；随后用 `ontology forget` 删除芒果，DB 回到 **3 条 live / 0 pending**。
+  截图：`docs/images/screens/14-ontology-pending.jpg`。
+  **双机 import 冲突**：当前只连了一台 CMM-AL10，没有第二台物理设备；用两个独立 SQLite store
+  模拟双机往返——A 上海、B 北京，A→B 导入报告 `conflict: local 北京 / incoming 上海 / kept 北京`；
+  B 改成深圳后 B→A 导入报告 `local 上海 / incoming 深圳 / kept 深圳`，两边 live 都等于较新值。
+  单测 **50/50**（含 proposed 排队/确认/忽略/去重、双 store 冲突、自动抽取）。`devecocli build`
+  BUILD SUCCESSFUL，deploy Smoke PASS；最终启动 `ontology ready version=13 facts=3`。
+  **边界**：自动抽取是规则式，只覆盖 23 个谓词里的一阶明确表达；不做模型抽取、不做指代消解
+  （“她对虾过敏”不会自动记到妈妈），也不会替代用户主动说的 `remember`。物理双机冲突仍待第二台设备。
+  代码：`lib/auto-capture.js`、`lib/store.js`、`index.js`、`lib/render.js`、`OntologyPanel.ets`、
+  `test/auto-capture.test.mjs`、`test/pending.test.mjs`；口径同步：`AGENTS.md` §2/§9、`docs/ONTOLOGY.md`。
 >
 - **本体 v3 语义层：谓词目录 / 图遍历 / 指标 / 血缘 / 覆盖度 / 冲突（2026-11-25 21:30–22:10，手机 CMM-AL10）**。
   结论先行：**借 NVIDIA Auto Ontology 的语义层纪律，不换存储**。`node:sqlite` 仍是唯一存储；
