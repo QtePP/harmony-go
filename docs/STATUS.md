@@ -7,6 +7,16 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 
+- **记忆回执：本轮移除了硬约束（2026-11-26 09:12–09:21，手机 CMM-AL10）**。
+  结论先行：**删一条硬约束不再静默**。原 `agent/pre-step` 只在 `overview.pinned.length === 0`
+  时记 `removed`，所以删掉 `language` 而 `name`/`allergy` 还在时完全没有提示；现在比较上一次
+  注入的 fact id 与当前 pinned，部分删除也会发一条 removal notice，并继续注入剩余快照。
+  真机：同一会话先把 `language=中文` 注入成 3 条基线 → `forget language` → 本轮回复下出现
+  **「本轮移除了硬约束」** → 下一轮模型答「语言偏好现在没有记录」。账本行
+  `turn=8 step=2 n=2 removed=1`；插件单测 **53/53**。
+  证据：`docs/images/screens/21-memory-removal.jpg`。
+  边界：removal chip 只在 pinned 集合缩小的**事件轮**出现；删完再开新会话不会重复显示——
+  新会话是 fresh baseline，只带剩余 facts 的「本轮新带入 N 条记忆」。
 - **本体 v3.1：自动抽取候选 → 待确认队列，双 store import 冲突（2026-11-25 22:20–22:47，手机 CMM-AL10）**。
   结论先行：**模型没调工具的那一句，也能变成候选，但绝不直接生效**。新增 `propose` 动作 +
   `agent/turn-stopping` 的确定性抽取：只认一阶明确句式（我叫/我对…过敏/我住在…/我在做…项目，

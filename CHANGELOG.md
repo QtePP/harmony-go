@@ -18,6 +18,11 @@
 
 ### 新增
 
+- **记忆回执补「本轮移除了硬约束」（2026-11-26 真机）**：`agent/pre-step` 原来只在 pinned
+  全部删光时记 `removed`，删一条（如 `language`）而 `name`/`allergy` 还在时完全静默。现在比较
+  上一次注入的 fact id 与当前 pinned，部分删除也发 removal notice 并注入剩余快照；回复下显示
+  「本轮移除了硬约束」。真机 CMM-AL10：3 条基线 → 删 language → 本轮 chip → 下一轮答
+  「语言偏好现在没有记录」；插件单测 53/53，截图 `docs/images/screens/21-memory-removal.jpg`。
 - **记忆回执 + 存储面板 + 开源 P0（2026-11-25 真机 / 工程）**。
   D3：回复下显示「本轮新带入 N 条记忆」，点开显示谓词/值/来源/日期；插件在 `agent/pre-step`
   写 `<dsh-home>/ontology/injections.jsonl`，ACP 在 settle drain 后 attach（修了「ACP 无

@@ -932,29 +932,6 @@ struct Index {
     message.memoryFacts = record.facts
   }
 
-  /**
-   * Attach to the reply that actually exists after queued updates drain.
-   *
-   * The prompt response and the final text chunks are separate frames: at
-   * prompt return `liveAssistant` can still be null, so attaching there would
-   * silently miss the row. This runs after `drainAcpUpdates()`.
-   */
-  private attachLatestMemory(): void {
-    let target: ChatMessage | null = this.liveAssistant
-    if (target === null) {
-      for (let index = this.messages.length - 1; index >= 0; index--) {
-        const row = this.messages[index]
-        if (row.role === Role.ASSISTANT && row.text.trim().length > 0) {
-          target = row
-          break
-        }
-      }
-    }
-    if (target !== null) {
-      this.attachMemory(target)
-    }
-  }
-
   /** First line of the newest answer, used as a notification body. */
   private latestAnswerLine(): string {
     for (let index = this.messages.length - 1; index >= 0; index--) {
@@ -1379,12 +1356,6 @@ struct Index {
       const result = await this.host.acp.sessionPromptBlocks(this.currentId, blocks)
       this.turnInFlight = false
       this.running = false
-      // ACP streams into a live row instead of the SDK's settled
-      // `assistant/message` event; attach the injection receipt before the row
-      // reference is dropped, or the chip never reaches the transcript.
-      if (this.liveAssistant !== null) {
-        this.attachMemory(this.liveAssistant)
-      }
       this.liveAssistant = null
       this.endTurn()
       const stop = result.stopReason === undefined ? '' : result.stopReason
@@ -1669,7 +1640,6 @@ struct Index {
     // Chunks that land after the turn settled still belong to the transcript;
     // without this they rendered and then disappeared on the next launch.
     if (!this.turnInFlight) {
-      this.attachLatestMemory()
       void this.persist()
     }
   }
@@ -1685,7 +1655,6 @@ struct Index {
   private settlePersist(): void {
     const hadQueued = this.updateQueue.length > 0
     this.drainAcpUpdates()
-    this.attachLatestMemory()
     if (!hadQueued) {
       void this.persist()
     }
@@ -1708,6 +1677,10 @@ struct Index {
       }
       const row = this.liveRow()
       row.text += text
+      // Attach here, not from settle/sendAcp: the final chunks can arrive in a
+      // later drain than the prompt response, and at that point the last
+      // existing assistant row may still belong to the previous turn.
+      this.attachMemory(row)
       return
     }
     if (kind === 'agent_thought_chunk') {
