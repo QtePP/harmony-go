@@ -169,6 +169,70 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+**项目与会话**：项目分桶、搜索 / 置顶 / 归档 / 多选
+
+<img src="docs/images/screens/22-sessions.jpg" alt="项目与会话" width="100%">
+
+</td>
+<td width="33%">
+
+**模型与思考深度**：会话级切换，选项随模型变化
+
+<img src="docs/images/screens/23-model.jpg" alt="模型与思考深度" width="100%">
+
+</td>
+<td width="33%">
+
+**本机规则**：问候 / 时间 / 四则运算直接回，不调云端
+
+<img src="docs/images/screens/24-local-gate.jpg" alt="本机规则" width="100%">
+
+</td>
+</tr>
+<tr>
+<td width="33%">
+
+**上下文 v2**：压缩阈值、24 步趋势、六类组成、缓存
+
+<img src="docs/images/screens/15-context-activity.jpg" alt="上下文 v2" width="100%">
+
+</td>
+<td width="33%">
+
+**每轮回执**：tokens / 工具 / 逐步明细
+
+<img src="docs/images/screens/16-turn-receipt.jpg" alt="每轮回执" width="100%">
+
+</td>
+<td width="33%">
+
+**本体候选队列**：自动抽取的候选，确认后才生效
+
+<img src="docs/images/screens/14-ontology-pending.jpg" alt="本体候选队列" width="100%">
+
+</td>
+</tr>
+<tr>
+<td width="33%">
+
+**移除硬约束**：删除也有回执，不再静默
+
+<img src="docs/images/screens/21-memory-removal.jpg" alt="移除硬约束" width="100%">
+
+</td>
+<td width="33%">
+
+**本体 v3 语义层**：describe / related / metric / 覆盖度
+
+<img src="docs/images/screens/13-ontology-v3.jpg" alt="本体 v3 语义层" width="100%">
+
+</td>
+<td width="33%">
+</td>
+</tr>
 </table>
 
 ### 长图成品与分享
@@ -227,7 +291,10 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 | **端侧个人本体** | SQLite 存身份/过敏/语言/沟通偏好等事实（23 个受控谓词）；硬约束跨会话自动注入，其余按需查询；设置 →「它知道什么」可查看/删除/分享，支持导出 bundle 与跨设备合并 |
 | **记忆回执** | 回复下显示「本轮新带入 N 条记忆」；pinned 集合缩小时显示「本轮移除了硬约束」；点开显示谓词 / 值 / 来源 / 日期，数据来自本机 `injections.jsonl`，不经过云端 |
 | **存储面板** | 设置 → 存储：安装包 390.6 MB + 应用数据 1.72 GB = **2.10 GB**；运行时载荷 ≈1.44 GB；解包成功即删沙箱 zip（−229 MB），可刷新 / 清缓存 / 重建载荷 |
-| **上下文面板** | 输入框小环打开原生面板：窗口占用、系统/工具/消息组成、前缀缓存命中、最近 12 轮；`context-ledger` 只记计数，force-stop 后仍在 |
+| **本体 v3 / 候选队列** | `describe` 谓词含义、`related` 1–2 跳、`metric` 日期/计数、`search` 覆盖度、`import` 冲突；自动抽取先写 `proposed`，面板接受/忽略，候选不注入、不参与取代 |
+| **模型与思考深度** | 顶栏切会话级模型与 Off / Low / High / Max；选项以服务端 `configOptions` 为准，切模型后列表可能收缩（默认模型切走不可切回） |
+| **项目与会话** | 项目分桶、会话搜索、置顶、归档、多选批量归档/删除、未读圆点；长按菜单统一锚在消息/文件/会话行上 |
+| **上下文面板（v2）** | 输入框小环打开：窗口占用 + 自动压缩阈值、最近 24 步趋势、六类组成、缓存命中、事件（注入 / 切模型 / 压缩 / 裁剪）、模型与工具耗时；点任一轮看「每轮回执」的 tokens / 工具 / 逐步明细。`context-ledger` 只追加本地 JSONL，不上传 |
 | **外观** | 明暗三档（跟随系统/浅色/深色，启动期生效）、对话字号四档、六套强调色 |
 | **命令与引用** | 输入 `/` 调本地命令，输入 `@` 引用工作区文件 |
 | **密钥热更新** | 设置页保存 API Key 后约 2 秒生效，无需重启 |
