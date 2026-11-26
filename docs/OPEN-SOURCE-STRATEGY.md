@@ -209,10 +209,10 @@ CLA 会让企业贡献者走法务，DCO 已足够证明 MIT 授权。
 **已完成（2026-11-25）**：① NOTICES 更新（0.2.2-rc.5 / 676 安装包 / 642 唯一包，许可证表重算）；
 ③ `scripts/generate-sbom.mjs` + `.github/workflows/release.yml`（SBOM/SHA256 上传，HAP 仍手工）；
 ④ workflow 生成 SHA256（tag 签名仍手工）；⑥ CONTRIBUTING 去重 + DCO；⑦ `TRADEMARK.md`、
-`GOVERNANCE.md`、`CODEOWNERS`、PR/RFC 模板。
+`GOVERNANCE.md`、`CODEOWNERS`、PR/RFC 模板、`docs/PLUGIN-SDK.md`。
 
 **还差**：⑤ 仓库设置里开 secret scanning / private vulnerability reporting（不是代码能开的）；
-⑦ `docs/PLUGIN-SDK.md`；③④ 首次 `v1.1.0` 实跑 workflow。
+③④ 首次 `v1.1.0` 实跑 workflow；插件模板仓（本文已有最小示例，独立模板仓待做）。
 
 ### 8.2 安全边界（写清楚，避免「伪漏洞」）
 

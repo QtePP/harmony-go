@@ -352,6 +352,7 @@ ACP 实测契约（勿凭直觉改）：
 | `docs/OPENBITFUN-COMPARISON.md` | **OpenBitFun 对比**（2026-11-24）：以 openBitFun `5946eab1` / OpenBitFun-Mobile `2cf3a4ad` 为基准，逐域对比两种拓扑（主机 agent + 手机遥控 vs 端侧运行时）、HarmonyOS 端（API 21+ / 12MB 源码 vs API 26 / 388MB HAP）、他们接 dsh 的三条路径（ACP agent / IDE 桥 / 静态 adapter）与 A/B/C 可借鉴清单 |
 | `docs/MOAT-PLAN.md` | **护城河加深方案**（2026-11-25）：三个主攻（Ontology 2.0 记忆 / Continuity 2.0 多设备 / Artifact Studio 产物）+ 三个地基（Footprint 2.1GB→≤1.8GB、Trust Console 网络账本、MCP/i18n）+ 24 周路线、指标与 kill criteria |
 | `docs/OPEN-SOURCE-STRATEGY.md` | **开源策略**（2026-11-25 讨论稿）：MIT 保留、代码/数据/服务边界、BDFL+DCO 治理、插件 SDK 优先于市场、只卖交付不卖数据、90 天合规与发布路线 |
+| `docs/PLUGIN-SDK.md` | **插件 SDK**：`@ohos/dsh-*` 三段式（包 / bundle 依赖 / patch 行）、`defineTool` 契约、平台红线、载荷树内测试与合并门禁、命名与参考插件 |
 | `docs/PERSONAL-AGENT.md` | 个人 Agent 与卡片演进方案（Agent Pack / CardSpec / 与 Muse 对比）。**§3–§6 的「垂域卡片做进外壳」方向已停**，文首有 2026-11-12 勘误；保留的是可复用的分析（Muse 对比、度量指标、风险表） |
 | 垂域仓（不在本仓） | <https://github.com/QtePP/Harmony-harness-game>（私有）。游戏的三层——裁判引擎 `@ohos/dsh-sanguo`、棋盘 `SanguoBoard*`、五个 agent pack——都在那边。**本仓不引用它们**：外壳只提供会话/文件/审批/设置，不认识任何垂域概念 |
 | `.workbuddy-ai/memory/` | 本地会话记忆（gitignored，不提交） |

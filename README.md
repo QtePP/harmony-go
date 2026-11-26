@@ -361,6 +361,7 @@ scripts/               # 载荷装配、一键部署、双远端推送（push-al
 | [OPENBITFUN-COMPARISON.md](docs/OPENBITFUN-COMPARISON.md) | 与 OpenBitFun 的对比：主机遥控 vs 端侧运行时、鸿蒙端差异、他们接 dsh 的三条路径与可借鉴清单 |
 | [MOAT-PLAN.md](docs/MOAT-PLAN.md) | 护城河加深方案：记忆/多设备/产物三个主攻，Footprint/Trust/MCP 三个地基，24 周路线与真机验收 |
 | [OPEN-SOURCE-STRATEGY.md](docs/OPEN-SOURCE-STRATEGY.md) | 开源策略：许可证/边界/治理/生态/商业化/合规与 90 天路线 |
+| [PLUGIN-SDK.md](docs/PLUGIN-SDK.md) | 插件 SDK：包 / 路由 / patch 行、工具契约、平台红线与测试 |
 
 ## 已知边界
 
