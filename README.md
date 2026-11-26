@@ -6,7 +6,7 @@
 **A native shell for running DeepSeek Harness locally on HarmonyOS devices.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.0.0-brightgreen)](https://github.com/QtePP/harmony-go/releases)
+[![Release](https://img.shields.io/badge/Release-v1.1.0-brightgreen)](https://github.com/QtePP/harmony-go/releases)
 [![Platform](https://img.shields.io/badge/Platform-HarmonyOS%20%7C%20API%2026-blue)](https://developer.huawei.com/consumer/cn/)
 [![Language](https://img.shields.io/badge/Language-ArkTS-3178C6)](https://developer.huawei.com/consumer/cn/arkts/)
 [![Runtime](https://img.shields.io/badge/Node-v24.2.0-339933)](https://nodejs.org/)
