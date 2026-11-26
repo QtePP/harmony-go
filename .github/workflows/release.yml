@@ -24,6 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag }}
           fetch-depth: 0
 
       - name: Verify the tag exists
@@ -47,8 +48,8 @@ jobs:
       - name: Checksums
         run: |
           mkdir -p dist
-          sha256sum entry/src/main/resources/rawfile/dsh-payload.zip > dist/SHA256SUMS
-          sha256sum dist/sbom.cdx.json >> dist/SHA256SUMS
+          (cd entry/src/main/resources/rawfile && sha256sum dsh-payload.zip) > dist/SHA256SUMS
+          (cd dist && sha256sum sbom.cdx.json) >> dist/SHA256SUMS
 
       - name: Publish assets
         env:
