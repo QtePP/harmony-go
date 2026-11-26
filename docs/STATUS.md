@@ -7,6 +7,20 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 
+- **v1.1.0 发布：双远端 tag + GitHub Release（2026-11-26 11:16–11:27）**。
+  结论先行：**版本、tag、Release 资产和校验和都闭环了；签名 HAP 还差一张 AGC Profile。**
+  版本：`AppScope/app.json5` → `versionCode 1010000` / `versionName 1.1.0`；CHANGELOG 从 Unreleased
+  切到 `[1.1.0] - 2026-11-26`；README Release badge 更新。commit `2df994f`，annotated tag `v1.1.0`，
+  GitHub + AtomGit 都推到 `2df994f`。
+  Release：<https://github.com/QtePP/harmony-go/releases/tag/v1.1.0>，资产 `dsh-payload.zip`、
+  `sbom.cdx.json`（CycloneDX 1.5，642 个去重包）、`SHA256SUMS`；下载后 `sha256sum -c SHA256SUMS`
+  两项均 OK。workflow 首跑发现两个问题并修在 `42c447a`：checkout 用的是分支而不是 `inputs.tag`；
+  SHA256SUMS 写的是仓库路径而不是资产名（下载后校验会失败）。修复后 run 45748697384 成功。
+  测试基线：`bash scripts/test.sh` 16 项全绿（payload 13 套、ArkTS 72 文件 0 error、LocalUnit、
+  CMM-AL10 Hypium 4/4）；unsigned HAP 构建通过（≈387 MB）。
+  **签名 HAP 未发布**：`scripts/build-release.sh` 在签名前校验 profile bundleName，
+  `~/key_taharness/taharnessRelease.p7b` 仍绑旧 bundleName，报「与 com.qtepp.harmonygo 不一致」；
+  需在 AGC 用新 bundleName 重新生成 Release Profile，再跑 `build-release.sh` 产出可分发的 `.app` / HAP。
 - **缓存命中 44% 的归因：一次构建更新重建了前缀（2026-11-26 08:45–08:55，手机 CMM-AL10）**。
   结论先行：**44% 不是稳态，是「应用更新改了工具描述」的一次性重建**；同构建内后续每一步都是
   98–99%。证据来自会话日志的 5 个 `request/header`：第 1 个与第 2 个的 `tools` JSON 不等
