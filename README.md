@@ -37,6 +37,8 @@
 
 头号功能是**端侧个人本体（Ontology）**：端侧 SQLite 存身份 / 过敏 / 语言 / 沟通偏好等硬约束，跨会话自动注入，可查看、删除、分享，可导出并对端合并。
 
+每次注入都会在回复下留下**「本轮新带入 N 条记忆」**，删除硬约束时显示**「本轮移除了硬约束」**；点开可以看谓词、值、来源与日期——记忆不是黑盒。
+
 > 完整对外口径（SCP 场景-冲突-承诺、能怎么说 / 别怎么说、已验证 / 实验 / 边界状态表）见 [docs/POSITIONING.md](docs/POSITIONING.md)；鸿蒙 PC（2in1）迁移清单见 [docs/POSITIONING.md](docs/POSITIONING.md) §10 与 [docs/ROADMAP.md](docs/ROADMAP.md) §6。
 
 本仓库是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）的**鸿蒙外壳**：
@@ -144,6 +146,29 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+**存储**：2.10 GB 总占用，运行时载荷可清理 / 可重建
+
+<img src="docs/images/screens/12-storage.jpg" alt="存储面板" width="100%">
+
+</td>
+<td width="33%">
+
+**记忆回执**：这一轮到底带入了哪几条硬约束
+
+<img src="docs/images/screens/13-memory-chip.jpg" alt="记忆回执" width="100%">
+
+</td>
+<td width="33%">
+
+**记忆溯源**：谓词 / 值 / 来源 / 日期，全部在本机
+
+<img src="docs/images/screens/14-memory-provenance.jpg" alt="记忆溯源" width="100%">
+
+</td>
+</tr>
 </table>
 
 ### 长图成品与分享
@@ -200,6 +225,8 @@ This repository is the **HarmonyOS shell** for [DeepSeek Harness](https://github
 | **会话分支** | 从任意消息 fork 出新会话，原会话完整保留 |
 | **项目隔离** | 每个项目独立工作区，可绑定外部目录 |
 | **端侧个人本体** | SQLite 存身份/过敏/语言/沟通偏好等事实（23 个受控谓词）；硬约束跨会话自动注入，其余按需查询；设置 →「它知道什么」可查看/删除/分享，支持导出 bundle 与跨设备合并 |
+| **记忆回执** | 回复下显示「本轮新带入 N 条记忆」；pinned 集合缩小时显示「本轮移除了硬约束」；点开显示谓词 / 值 / 来源 / 日期，数据来自本机 `injections.jsonl`，不经过云端 |
+| **存储面板** | 设置 → 存储：安装包 390.6 MB + 应用数据 1.72 GB = **2.10 GB**；运行时载荷 ≈1.44 GB；解包成功即删沙箱 zip（−229 MB），可刷新 / 清缓存 / 重建载荷 |
 | **上下文面板** | 输入框小环打开原生面板：窗口占用、系统/工具/消息组成、前缀缓存命中、最近 12 轮；`context-ledger` 只记计数，force-stop 后仍在 |
 | **外观** | 明暗三档（跟随系统/浅色/深色，启动期生效）、对话字号四档、六套强调色 |
 | **命令与引用** | 输入 `/` 调本地命令，输入 `@` 引用工作区文件 |
