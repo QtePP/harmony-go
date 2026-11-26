@@ -40,7 +40,17 @@ import { SessionRail } from '../view/SessionRail'
 import { PythonHost } from '../view/PythonHost'
 import { SettingsSheet } from '../view/SettingsSheet'
 import { ContextPanel } from '../view/ContextPanel'
-import { ContextRecord, parseLedger, recordsFor } from '../model/ContextLedger'
+import { TurnDetailPanel } from '../view/TurnDetailPanel'
+import { TraceMark } from '../model/TurnDetail'
+import {
+  ContextEvent,
+  ContextRecord,
+  StepStat,
+  eventsFor,
+  parseLedgerAll,
+  recordsFor,
+  stepsFor
+} from '../model/ContextLedger'
 
 /** dsh pass-through admission budget: encoded bytes and decoded pixels per image. */
 const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024
@@ -152,6 +162,12 @@ struct Index {
   @State showSettings: boolean = false
   @State showContext: boolean = false
   @State contextRecords: ContextRecord[] = []
+  @State contextEvents: ContextEvent[] = []
+  @State contextSteps: StepStat[] = []
+  /** Turn opened from the context panel; 0 = the receipt page is closed. */
+  @State contextTurn: number = 0
+  /** Flattened local tool traces, snapshotted when the receipt opens. */
+  @State turnTraces: TraceMark[] = []
   @State showSessions: boolean = false
   @State showViewer: boolean = false
   @State viewerPath: string = ''
@@ -290,6 +306,11 @@ struct Index {
    * of closing the panel.
    */
   onBackPress(): boolean {
+    // Back unwinds one layer at a time: receipt → context panel → the app.
+    if (this.contextTurn > 0) {
+      this.contextTurn = 0
+      return true
+    }
     if (this.showContext) {
       this.showContext = false
       return true
@@ -2660,6 +2681,8 @@ struct Index {
    */
   private loadContextLedger(): void {
     this.contextRecords = []
+    this.contextEvents = []
+    this.contextSteps = []
     const context = this.context
     if (context === null) {
       return
@@ -2681,11 +2704,65 @@ struct Index {
     } catch (error) {
       // See above: an absent ledger is the pre-first-turn state.
     }
-    this.contextRecords = recordsFor(parseLedger(parts.join('\n')), this.currentId)
+    const data = parseLedgerAll(parts.join('\n'))
+    this.contextRecords = recordsFor(data.records, this.currentId)
+    this.contextEvents = eventsFor(data.events, this.currentId)
+    this.contextSteps = stepsFor(data.steps, this.currentId)
+  }
+
+  /**
+   * Open one turn's receipt.
+   *
+   * The ledger is re-read first (a turn that just settled may still be in the
+   * append queue) and the local traces are flattened once, so the overlay does
+   * not deep-copy the whole message list through a @Prop.
+   */
+  private openTurn(turn: number): void {
+    if (turn <= 0) {
+      return
+    }
+    this.loadContextLedger()
+    this.turnTraces = this.flattenTraces()
+    this.contextTurn = turn
+  }
+
+  /**
+   * Flatten the local tool traces into the marks the receipt joins by time.
+   *
+   * A turn's calls all hang off one assistant row (the host row is reset at
+   * every turn end), so a flat list sorted by start time is enough: the join
+   * places each call on the step whose window contains it.
+   */
+  private flattenTraces(): TraceMark[] {
+    const marks: TraceMark[] = []
+    for (const message of this.messages) {
+      if (message.trace.length === 0) {
+        continue
+      }
+      for (const entry of message.trace) {
+        marks.push({
+          name: entry.name,
+          input: entry.input,
+          output: entry.output,
+          status: entry.status,
+          at: entry.at,
+          doneAt: entry.doneAt
+        })
+      }
+    }
+    marks.sort((a: TraceMark, b: TraceMark) => a.at - b.at)
+    return marks
   }
 
   /** Open the panel with a fresh read; the ring is the only entry point. */
   private openContext(): void {
+    // The panel is a mode change: the draft keeps its text, but the keyboard
+    // must go or the lower cards sit underneath it.
+    try {
+      this.getUIContext().getFocusController().clearFocus()
+    } catch (error) {
+      // Focus APIs differ across API levels; the panel is usable either way.
+    }
     this.loadContextLedger()
     this.showContext = true
     // The ledger append is queued off the settlement event; a turn that just
@@ -3147,12 +3224,29 @@ struct Index {
           if (this.showContext) {
             ContextPanel({
               records: this.contextRecords,
+              events: this.contextEvents,
+              steps: this.contextSteps,
               sessionTitle: this.title,
               onClose: () => {
                 this.showContext = false
               },
-              onRefresh: () => this.loadContextLedger()
+              onRefresh: () => this.loadContextLedger(),
+              onOpenTurn: (turn: number) => this.openTurn(turn)
             })
+
+            if (this.contextTurn > 0) {
+              TurnDetailPanel({
+                records: this.contextRecords,
+                events: this.contextEvents,
+                steps: this.contextSteps,
+                traces: this.turnTraces,
+                turn: this.contextTurn,
+                sessionTitle: this.title,
+                onClose: () => {
+                  this.contextTurn = 0
+                }
+              })
+            }
           }
         }
         .bindContentCover($$this.showViewer, this.viewerCover(), {

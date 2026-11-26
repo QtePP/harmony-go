@@ -165,6 +165,10 @@ FormData` 是必须的——dsh 启动期会读全局 `Headers`，只换 `fetch`
 | `turn/end` | `session/prompt` 的 `{stopReason}` | 结束 running，落盘 |
 | —— | `usage_update` | 上下文小环 + 每轮用量 |
 
+> ACP 丢掉的**组成、四类消息拆分、窗口事件与步耗时**由宿主插件 `@ohos/dsh-context-ledger`
+> 写 `<dsh-home>/context-ledger.jsonl` 补上（`v:1` 结算 / `k:"e"` 事件 / `k:"s"` 步），
+> 原生面板读文件渲染；详见 `docs/CONTEXT-LEDGER.md`。
+
 ## 5. 沙箱：四层，而且没有一层是内核级进程沙箱
 
 | 层 | 强度 | 是什么 |

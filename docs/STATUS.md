@@ -7,6 +7,84 @@
 > 本文件只回答「验过没有、怎么验的、发现了什么」。新增验收记录请写在这里，并在
 > `AGENTS.md` §7 的摘要里更新一句——两处同一 commit 改。
 
+- **缓存命中 44% 的归因：一次构建更新重建了前缀（2026-11-26 08:45–08:55，手机 CMM-AL10）**。
+  结论先行：**44% 不是稳态，是「应用更新改了工具描述」的一次性重建**；同构建内后续每一步都是
+  98–99%。证据来自会话日志的 5 个 `request/header`：第 1 个与第 2 个的 `tools` JSON 不等
+  （32,958 → 33,165 字符，首个差异是 `ontology` 描述里新增的 `(11) propose …` 段，2,899 → 3,088），
+  差异位置在第 15,016 字符 ≈ tools 的 45.5%；该轮账本 `inp 5,836 / cr 4,608` = **44.1%**，两者重合。
+  第 2–5 个 header 的 tools 完全一致，于是 turn 3/4/5 回到 97–98%。**同一构建内重启不掉**
+  （05 个 header 的 resume 都一样），掉只发生在「工具集/系统提示/模型变了」的时候。
+  产品改动：`ContextTurn` / `TurnDetail` 记 `firstInput` / `firstHit`；面板每轮行把低命中轮写成
+  `缓存 44% · 首步 5.8k 未命中`；回执页多一张说明卡（「前缀缓存按整段前缀匹配…第 2 步起回到 98%」）。
+  单测：LocalUnit 新增两条（turn 首步、低命中首步），全绿；`devecocli build` 成功、Smoke PASS；
+  真机截图 `docs/images/screens/19-cache-prefix.jpg`。
+  **会话整体也按稳态显示**（2026-11-26 09:00）：缓存卡大数字改成**剔除首步重算后的稳态命中**
+  （本会话 98%，而不是被一次更新拖成 92%），下面一行写「另 1 次首步重算（5.8k 未命中），不计入稳态」；
+  剔除规则 `inp ≥ 1000 且命中 < 60%`（`isRecompute`），整场只有重算步时回退到原始命中率。
+  LocalUnit 加两条（稳态聚合、`isRecompute`），覆盖 20.9%。
+  **边界**：这条归因靠会话日志的 header 差异，普通用户看不到；面板只负责把「首步漏了多少」摆出来，
+  不猜原因（文案列的是「应用更新、切换模型、工具或系统提示变更」三种可能）。
+
+- **每轮回执：点一轮看它花在哪（2026-11-26 08:10–08:35，手机 CMM-AL10，ACP）**。
+  结论先行：**面板「最近 N 轮」整行可点，进一页就能回答「这一轮为什么慢/为什么贵」**，而且
+  **账本一行没加、载荷没重打**——tokens 与计时来自账本，工具轨迹来自本机对话缓存，两边按时间窗
+  连接。真机第 4 轮实测：`3s / 2 步 / 3 工具 / 缓存 98%`，未缓存输入 516、输出 336、缓存读 22.4k、
+  缓存写 0；第 1 步 `1s · 工具 56ms`、`入 315 · 出 83 · 缓存 97% · 窗口 11.3k`，三个 chip
+  `ontology / ontology / glob`（全 ✓），点 glob 就地展开参数 `**/*` 与结果前四行；第 2 步
+  `2s · 入 201 · 出 253 · 缓存 98% · 窗口 11.6k`；返回键三级：回执 → 面板 → 应用。
+  连接规则（`model/TurnDetail.ets`，纯函数）：步窗口 = `[步结束 − 步耗时, 步结束]`，工具按**开始
+  时间**落窗；**没有逐步计时的旧轮不做归属**（否则 0 作左边界会把之前所有轮的工具都吞进来），
+  界面同时给出 `hasTiming` 降级文案；窗外工具在**有计时**的轮里挂最近步（时钟偏移/中断兜底）。
+  踩到的四个坑：
+  1. 旧轮窗口左边界取 0 → 吞掉前几轮工具；改成「无计时不归属」，LocalUnit 加一条专门用例
+     （首版断言写反了，被 `ERROR: Error in …expect 2 equals 1` 抓到）。
+  2. `formatDuration` 对亚秒工具一律 `0s`（读起来像没跑）→ 回执改用 `56ms` 这种标签。
+  3. chip 内联展开会把 chip 挤到下一行 → 展开块移到 chip 行下方、整行宽。
+  4. **本地 trace 的 chip 耗时不可信**：同一个 ACP 批次到达的 `tool_call`/`tool_call_update`
+     只差 1ms（glob 实际 56ms）→ chip 只显示名字与状态，耗时按步（宿主计时）汇总；页脚写明。
+  验证：`bash scripts/test.sh local` 全绿（新增 `TurnDetail` 8 例：多步聚合、工具落窗、窗外兜底、
+  未结算步、事件过滤、旧轮隔离、运行中工具、空轮；LocalUnit 行覆盖 20.6%），`devecocli build`
+  BUILD SUCCESSFUL，deploy Smoke PASS；返回键三级用 `hdc shell "uitest uiInput keyEvent Back"`
+  实测（**这台设备的 shell 没有 `input` 命令**，`hdc shell input keyevent 4` 报
+  `inaccessible or not found`，别拿它当失败）。代码：`model/TurnDetail.ets`、`view/TurnDetailPanel.ets`、
+  `view/ContextPanel.ets`（每轮行 + `›`）、`pages/Index.ets`（三级返回 + trace 扁平化快照）；
+  口径同步：`AGENTS.md` §7.1、`docs/CONTEXT-LEDGER.md`。
+
+- **上下文面板 v2：账本三种行 + 阈值/趋势/事件/拆分（2026-11-26 00:00–00:40，手机 CMM-AL10，ACP）**。
+  结论先行：**面板从「窗口有多满」升级成「窗口里是什么、怎么长起来的、为什么变」**，而且数字对得上
+  ——组成卡六项之和等于原来的「消息与工具结果」，四个消息桶之和等于 `msg`。
+  做法：`@ohos/dsh-context-ledger` 在同一份 `context-ledger.jsonl` 里写**三种行**——结算 `v:1`
+  （新增 `u/au/tr/ij` 四类消息拆分、`thr/rsv` 压缩阈值与预留）、事件 `v:2,k:"e"`
+  （注入/切模型/压缩/裁剪 + 有符号 delta）、步 `v:2,k:"s"`（墙钟/工具耗时/调用数）；旧文件照常读。
+  四类拆分的做法是 `ctx.tokenMeter.measure(session)` 给每个 **surface 节点**定价，按事件类型归桶
+  （user/message 的 `source.kind` 区分人 vs 注入），再按 `contextBreakdown.messageTokens` 归一。
+  阈值不是写死的 80%：`min(窗口×0.8, 窗口−预留输出−64k)`，本机实测 **727k（69%）**、
+  `rsv=256000`——比旧面板「70% 该考虑压缩」早得多，而且说得清为什么。
+  真机取证（15:xx 后新跑一轮，`context-ledger.jsonl` 原文）：
+  - 两条注入事件：`{"k":"e","kind":"inject","label":"ontology","d":76}`、
+    `{"k":"e","kind":"inject","label":"time-context","d":73}`，都落在 turn 5 step 1；
+  - 结算行 `u:70, au:703, tr:186, ij:1254`，`msg:2213`（70+703+186+1254 = 2213 ✓）、
+    `thr:727040, rsv:256000`；步行 `ms:1274, tool:0, n:0`；
+  - 面板截图：占用 `12.0k/1.0M · 1%` + 红色阈值刻度、`到 727k（69%）自动压缩；另有 256k 留给回复`、
+    统计条 `5 轮 / 8 步 / 1 工具调用`、趋势 8 根堆叠柱（左对齐、选中第 5 轮第 1 步、`12k +417`）、
+    六类组成 `867 / 8.3k / 70 / 1.3k / 703 / 186`、缓存 92%、事件卡、`4s / 0s` 耗时、最近 5 轮。
+  踩到的三个坑（都只在真机暴露）：
+  1. **`user/message` 的载荷就是消息本身**（`data.source.kind`），不是 `data.message.source`——
+     第一版照 `assistant/message` 的形状读，结果人说的话被算进「注入上下文」（`u:0`）、
+     事件一条也没写。是拿设备上 JSONL 的 `u:0` 和 `grep '"k":"e"'` 为 0 反查出来的。
+  2. **`ForEach` 键重复会静默吞行**：两条注入时间戳相同（同一毫秒），键去重后事件卡只剩一条；
+     键里补 index 修好。
+  3. **面板被键盘盖住**：从输入框小环进入时 TextArea 仍有焦点；`openContext()` 先
+     `getUIContext().getFocusController().clearFocus()` 再显示。
+  另有一条**观察**（未改，另案）：force-stop 后冷启，消息列表有一次只回放到上一轮（第 4 轮的
+  glob 对话不在），再跑一轮后历史补齐——像是本地消息缓存与服务端 resume 的时序，不在本次改动范围。
+  验证：插件单测 **12/12**（新增阈值公式、事件分类、拆分归一、三种行落盘顺序），
+  `bash scripts/test.sh unit` 13 套全绿，LocalUnit 通过（新增 `parseLedgerAll`/`eventsFor`/`stepsFor`/
+  趋势/耗时/`formatTokens` 整数千位），`devecocli build` BUILD SUCCESSFUL，deploy Smoke PASS。
+  代码：`@ohos/dsh-context-ledger/index.js`、`entry/.../model/ContextLedger.ets`、
+  `entry/.../view/ContextPanel.ets`、`entry/.../pages/Index.ets`；口径同步：`AGENTS.md` §7.1/§9、
+  `docs/CONTEXT-LEDGER.md`。
+
 - **记忆回执：本轮移除了硬约束（2026-11-26 09:12–09:21，手机 CMM-AL10）**。
   结论先行：**删一条硬约束不再静默**。原 `agent/pre-step` 只在 `overview.pinned.length === 0`
   时记 `removed`，所以删掉 `language` 而 `name`/`allergy` 还在时完全没有提示；现在比较上一次
